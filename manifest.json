@@ -1,0 +1,153 @@
+{
+  "version": "1.2.27",
+  "base": "opencode-1.2.27",
+  "created": "2026-03-20",
+  "modifications": [
+    {
+      "file": "packages/opencode/src/onprem/index.ts",
+      "action": "create",
+      "description": "Core onprem module for offline resource resolution",
+      "patch": "0001-add-onprem-module-and-scripts.patch"
+    },
+    {
+      "file": "script/download-onprem-deps.ts",
+      "action": "create",
+      "description": "Download dependencies in online environment",
+      "patch": "0001-add-onprem-module-and-scripts.patch"
+    },
+    {
+      "file": "script/package-onprem-bundle.ts",
+      "action": "create",
+      "description": "Package bundle for offline deployment",
+      "patch": "0001-add-onprem-module-and-scripts.patch"
+    },
+    {
+      "file": "packages/opencode/src/flag/flag.ts",
+      "action": "modify",
+      "description": "Add OPENCODE_ONPREM_MODE and OPENCODE_ONPREM_DEPS_PATH flags",
+      "search_marker": "// onprem-fork:",
+      "patch": "0002-modify-source-files.patch"
+    },
+    {
+      "file": "packages/opencode/src/file/ripgrep.ts",
+      "action": "modify",
+      "description": "Add offline ripgrep path check",
+      "search_marker": "// onprem-fork:",
+      "patch": "0002-modify-source-files.patch"
+    },
+    {
+      "file": "packages/opencode/src/provider/models.ts",
+      "action": "modify",
+      "description": "Load models.json from deps directory in onprem mode",
+      "search_marker": "// onprem-fork:",
+      "patch": "0002-modify-source-files.patch"
+    },
+    {
+      "file": "packages/opencode/src/server/server.ts",
+      "action": "modify",
+      "description": "Serve static files from deps/app in onprem mode",
+      "search_marker": "// onprem-fork:",
+      "patch": "0002-modify-source-files.patch"
+    },
+    {
+      "file": "packages/opencode/src/installation/index.ts",
+      "action": "modify",
+      "description": "Display onprem version from manifest",
+      "search_marker": "// onprem-fork:",
+      "patch": "0002-modify-source-files.patch"
+    },
+    {
+      "file": "packages/opencode/src/lsp/server.ts",
+      "action": "modify",
+      "description": "Add offline LSP path checks for all supported LSPs (TypeScript, Pyright, Rust-analyzer, Clangd, ZLS, LuaLS, TerraformLS, TexLab, Tinymist, Svelte, Astro, YamlLS, DockerfileLS)",
+      "search_marker": "// onprem-fork:",
+      "patch": "lsp-server-onprem.patch"
+    },
+    {
+      "file": "packages/opencode/parsers-config.ts",
+      "action": "modify",
+      "description": "Support loading tree-sitter parsers from local deps in onprem mode",
+      "search_marker": "// onprem-fork:",
+      "patch": "parsers-config-onprem.patch"
+    }
+  ],
+  "scripts": [
+    {
+      "file": "script/download-onprem-deps.ts",
+      "description": "Download dependencies in online environment"
+    },
+    {
+      "file": "script/package-onprem-bundle.ts",
+      "description": "Package bundle for offline deployment"
+    },
+    {
+      "file": "scripts/apply-patches.sh",
+      "description": "Apply all patches to target repository"
+    }
+  ],
+  "environment_variables": {
+    "OPENCODE_ONPREM_MODE": "Set to 'true' to enable onprem mode",
+    "OPENCODE_ONPREM_DEPS_PATH": "Path to the deps directory containing offline resources",
+    "OPENCODE_DISABLE_AUTOUPDATE": "Set to 'true' to disable auto-updates (recommended)",
+    "OPENCODE_DISABLE_LSP_DOWNLOAD": "Set to 'true' to disable LSP downloads (recommended)",
+    "OPENCODE_DISABLE_MODELS_FETCH": "Set to 'true' to disable models.dev fetch (recommended)"
+  },
+  "deps_structure": {
+    "ripgrep/rg": "Ripgrep binary",
+    "lsp/clangd/bin/clangd": "Clangd LSP binary",
+    "lsp/rust-analyzer/bin/rust-analyzer": "Rust-analyzer LSP binary",
+    "lsp/zls/bin/zls": "Zig Language Server binary",
+    "lsp/lua-language-server/bin/lua-language-server": "Lua Language Server binary",
+    "lsp/terraform-ls/terraform-ls": "Terraform Language Server binary",
+    "lsp/texlab/bin/texlab": "TexLab (LaTeX) Language Server binary",
+    "lsp/tinymist/bin/tinymist": "Tinymist (Typst) Language Server binary",
+    "tree-sitter/wasm/": "Tree-sitter WASM parser files (21 languages)",
+    "tree-sitter/queries/": "Tree-sitter query files (highlights, locals)",
+    "node_modules/typescript/": "TypeScript npm package",
+    "node_modules/typescript-language-server/": "TypeScript LSP npm package",
+    "node_modules/pyright/": "Pyright npm package",
+    "node_modules/svelte-language-server/": "Svelte Language Server npm package",
+    "node_modules/@astrojs/language-server/": "Astro Language Server npm package",
+    "node_modules/yaml-language-server/": "YAML Language Server npm package",
+    "node_modules/dockerfile-language-server-nodejs/": "Dockerfile Language Server npm package",
+    "models.json": "Model metadata from models.dev",
+    "app/": "Pre-built Web UI",
+    "opentui/libopentui.so": "OpenTUI native library"
+  },
+  "supported_lsps": {
+    "binary_lsps": [
+      "clangd (C/C++)",
+      "rust-analyzer (Rust)",
+      "zls (Zig)",
+      "lua-language-server (Lua)",
+      "terraform-ls (Terraform)",
+      "texlab (LaTeX)",
+      "tinymist (Typst)"
+    ],
+    "npm_lsps": [
+      "typescript-language-server (TypeScript/JavaScript)",
+      "pyright (Python)",
+      "svelte-language-server (Svelte)",
+      "@astrojs/language-server (Astro)",
+      "yaml-language-server (YAML)",
+      "dockerfile-language-server-nodejs (Dockerfile)"
+    ],
+    "tree_sitter_parsers": [
+      "python", "rust", "go", "cpp", "csharp", "bash", "c", "java",
+      "ruby", "php", "scala", "html", "json", "yaml", "haskell",
+      "css", "julia", "ocaml", "clojure", "swift", "nix"
+    ],
+    "system_lsps": [
+      "jdtls (requires Java 21+)",
+      "haskell-language-server (requires GHC)",
+      "gleam (requires gleam installed)",
+      "clojure-lsp (requires clojure-lsp installed)",
+      "nixd (requires nixd installed)",
+      "julials (requires Julia installed)"
+    ],
+    "skipped_lsps": [
+      "elixir-ls (requires Elixir runtime)",
+      "kotlin-lsp (requires JetBrains CDN)"
+    ]
+  }
+}

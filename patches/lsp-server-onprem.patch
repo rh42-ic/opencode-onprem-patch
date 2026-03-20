@@ -1,0 +1,391 @@
+diff --git a/packages/opencode/src/lsp/server.ts b/packages/opencode/src/lsp/server.ts
+index 8f93213..a0784ba 100644
+--- a/packages/opencode/src/lsp/server.ts
++++ b/packages/opencode/src/lsp/server.ts
+@@ -13,6 +13,7 @@ import { Archive } from "../util/archive"
+ import { Process } from "../util/process"
+ import { which } from "../util/which"
+ import { Module } from "@opencode-ai/util/module"
++import { Onprem } from "../onprem"
+ 
+ const spawn = ((cmd, args, opts) => {
+   if (Array.isArray(args)) return launch(cmd, [...args], { ...(opts ?? {}), windowsHide: true })
+@@ -104,6 +105,35 @@ export namespace LSPServer {
+     ),
+     extensions: [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts"],
+     async spawn(root) {
++      // onprem-fork: check for offline typescript-language-server first
++      if (Onprem.isEnabled()) {
++        const tsPath = Onprem.resolveNpmPackage("typescript")
++        const tslspPath = Onprem.resolveNpmPackage("typescript-language-server")
++        if (tsPath && tslspPath) {
++          const tsserver = path.join(tsPath, "lib", "tsserver.js")
++          const tslspJs = path.join(tslspPath, "lib", "cli.mjs")
++          if ((await Bun.file(tsserver).exists()) && (await Bun.file(tslspJs).exists())) {
++            log.info("using onprem typescript-language-server", { tsserver, lsp: tslspJs })
++            const proc = spawn(BunProc.which(), ["run", tslspJs, "--stdio"], {
++              cwd: root,
++              env: {
++                ...process.env,
++                BUN_BE_BUN: "1",
++              },
++            })
++            return {
++              process: proc,
++              initialization: {
++                tsserver: {
++                  path: tsserver,
++                },
++              },
++            }
++          }
++        }
++        log.warn("onprem mode enabled but typescript-language-server not found in deps")
++      }
++
+       const tsserver = Module.resolve("typescript/lib/tsserver.js", Instance.directory)
+       log.info("typescript server", { tsserver })
+       if (!tsserver) return
+@@ -518,7 +548,24 @@ export namespace LSPServer {
+     root: NearestRoot(["pyproject.toml", "setup.py", "setup.cfg", "requirements.txt", "Pipfile", "pyrightconfig.json"]),
+     async spawn(root) {
+       let binary = which("pyright-langserver")
+-      const args = []
++      const args: string[] = []
++
++      // onprem-fork: check for offline pyright first
++      if (!binary && Onprem.isEnabled()) {
++        const pyrightPath = Onprem.resolveNpmPackage("pyright")
++        if (pyrightPath) {
++          const pyrightJs = path.join(pyrightPath, "dist", "pyright-langserver.js")
++          if (await Bun.file(pyrightJs).exists()) {
++            log.info("using onprem pyright", { path: pyrightJs })
++            binary = BunProc.which()
++            args.push(...["run", pyrightJs])
++          }
++        }
++        if (!binary) {
++          log.warn("onprem mode enabled but pyright not found in deps")
++        }
++      }
++
+       if (!binary) {
+         const js = path.join(Global.Path.bin, "node_modules", "pyright", "dist", "pyright-langserver.js")
+         if (!(await Filesystem.exists(js))) {
+@@ -638,6 +685,19 @@ export namespace LSPServer {
+         PATH: process.env["PATH"] + path.delimiter + Global.Path.bin,
+       })
+ 
++      if (!bin) {
++        // onprem-fork: check for offline zls first
++        if (Onprem.isEnabled()) {
++          const offlineBin = Onprem.resolveLspBinary("zls", "zls" + (process.platform === "win32" ? ".exe" : ""))
++          if (offlineBin && (await Filesystem.exists(offlineBin))) {
++            log.info("using onprem zls", { path: offlineBin })
++            bin = offlineBin
++          } else {
++            log.warn("onprem mode enabled but zls not found in deps")
++          }
++        }
++      }
++
+       if (!bin) {
+         const zig = which("zig")
+         if (!zig) {
+@@ -886,6 +946,21 @@ export namespace LSPServer {
+     },
+     extensions: [".rs"],
+     async spawn(root) {
++      // onprem-fork: check for offline rust-analyzer first
++      if (Onprem.isEnabled()) {
++        const ext = process.platform === "win32" ? ".exe" : ""
++        const offlinePath = Onprem.resolveLspBinary("rust-analyzer", "rust-analyzer" + ext)
++        if (offlinePath && (await Bun.file(offlinePath).exists())) {
++          log.info("using onprem rust-analyzer", { path: offlinePath })
++          return {
++            process: spawn(offlinePath, {
++              cwd: root,
++            }),
++          }
++        }
++        log.warn("onprem mode enabled but rust-analyzer not found in deps")
++      }
++
+       const bin = which("rust-analyzer")
+       if (!bin) {
+         log.info("rust-analyzer not found in path, please install it")
+@@ -915,6 +990,21 @@ export namespace LSPServer {
+       }
+ 
+       const ext = process.platform === "win32" ? ".exe" : ""
++
++      // onprem-fork: check for offline clangd first
++      if (Onprem.isEnabled()) {
++        const offlinePath = Onprem.resolveLspBinary("clangd", "clangd" + ext)
++        if (offlinePath && (await Bun.file(offlinePath).exists())) {
++          log.info("using onprem clangd", { path: offlinePath })
++          return {
++            process: spawn(offlinePath, args, {
++              cwd: root,
++            }),
++          }
++        }
++        log.warn("onprem mode enabled but clangd not found in deps")
++      }
++
+       const direct = path.join(Global.Path.bin, "clangd" + ext)
+       if (await Filesystem.exists(direct)) {
+         return {
+@@ -1054,6 +1144,26 @@ export namespace LSPServer {
+       const args: string[] = []
+       if (!binary) {
+         const js = path.join(Global.Path.bin, "node_modules", "svelte-language-server", "bin", "server.js")
++        // onprem-fork: check for offline svelte-language-server first
++        if (Onprem.isEnabled()) {
++          const depsJs = Onprem.resolveNpmPackage("svelte-language-server")
++          if (depsJs) {
++            const depsServerJs = path.join(depsJs, "bin", "server.js")
++            if (await Filesystem.exists(depsServerJs)) {
++              log.info("using onprem svelte-language-server", { path: depsServerJs })
++              binary = BunProc.which()
++              args.push("run", depsServerJs)
++              args.push("--stdio")
++              return {
++                process: spawn(binary, args, {
++                  cwd: root,
++                  env: { ...process.env, BUN_BE_BUN: "1" },
++                }),
++                initialization: {},
++              }
++            }
++          }
++        }
+         if (!(await Filesystem.exists(js))) {
+           if (Flag.OPENCODE_DISABLE_LSP_DOWNLOAD) return
+           await Process.spawn([BunProc.which(), "install", "svelte-language-server"], {
+@@ -1101,6 +1211,28 @@ export namespace LSPServer {
+       const args: string[] = []
+       if (!binary) {
+         const js = path.join(Global.Path.bin, "node_modules", "@astrojs", "language-server", "bin", "nodeServer.js")
++        // onprem-fork: check for offline @astrojs/language-server first
++        if (Onprem.isEnabled()) {
++          const depsPkg = Onprem.resolveNpmPackage("@astrojs/language-server")
++          if (depsPkg) {
++            const depsServerJs = path.join(depsPkg, "bin", "nodeServer.js")
++            if (await Filesystem.exists(depsServerJs)) {
++              log.info("using onprem @astrojs/language-server", { path: depsServerJs })
++              binary = BunProc.which()
++              args.push("run", depsServerJs)
++              args.push("--stdio")
++              return {
++                process: spawn(binary, args, {
++                  cwd: root,
++                  env: { ...process.env, BUN_BE_BUN: "1" },
++                }),
++                initialization: {
++                  typescript: { tsdk },
++                },
++              }
++            }
++          }
++        }
+         if (!(await Filesystem.exists(js))) {
+           if (Flag.OPENCODE_DISABLE_LSP_DOWNLOAD) return
+           await Process.spawn([BunProc.which(), "install", "@astrojs/language-server"], {
+@@ -1373,8 +1505,26 @@ export namespace LSPServer {
+           "src",
+           "server.js",
+         )
+-        const exists = await Filesystem.exists(js)
+-        if (!exists) {
++        // onprem-fork: check for offline yaml-language-server first
++        if (Onprem.isEnabled()) {
++          const depsPkg = Onprem.resolveNpmPackage("yaml-language-server")
++          if (depsPkg) {
++            const depsServerJs = path.join(depsPkg, "out", "server", "src", "server.js")
++            if (await Filesystem.exists(depsServerJs)) {
++              log.info("using onprem yaml-language-server", { path: depsServerJs })
++              binary = BunProc.which()
++              args.push("run", depsServerJs)
++              args.push("--stdio")
++              return {
++                process: spawn(binary, args, {
++                  cwd: root,
++                  env: { ...process.env, BUN_BE_BUN: "1" },
++                }),
++              }
++            }
++          }
++        }
++        if (!(await Filesystem.exists(js))) {
+           if (Flag.OPENCODE_DISABLE_LSP_DOWNLOAD) return
+           await Process.spawn([BunProc.which(), "install", "yaml-language-server"], {
+             cwd: Global.Path.bin,
+@@ -1422,10 +1572,29 @@ export namespace LSPServer {
+       })
+ 
+       if (!bin) {
+-        if (Flag.OPENCODE_DISABLE_LSP_DOWNLOAD) return
+-        log.info("downloading lua-language-server from GitHub releases")
++        // onprem-fork: check for offline lua-language-server first
++        if (Onprem.isEnabled()) {
++          const offlineBin = path.join(Global.Path.bin, "lsp", "lua-language-server", "bin", "lua-language-server" + (process.platform === "win32" ? ".exe" : ""))
++          if (Onprem.getDepsPath()) {
++            const depsBin = Onprem.resolveLspBinary("lua-language-server", "lua-language-server" + (process.platform === "win32" ? ".exe" : ""))
++            if (depsBin && (await Filesystem.exists(depsBin))) {
++              log.info("using onprem lua-language-server", { path: depsBin })
++              bin = depsBin
++            }
++          }
++          if (!bin && offlineBin && (await Filesystem.exists(offlineBin))) {
++            log.info("using offlinelua-language-server", { path: offlineBin })
++            bin = offlineBin
++          } else if (!bin) {
++            log.warn("onprem mode enabled but lua-language-server not found in deps")
++          }
++        }
++
++        if (!bin) {
++          if (Flag.OPENCODE_DISABLE_LSP_DOWNLOAD) return
++          log.info("downloading lua-language-server from GitHub releases")
+ 
+-        const releaseResponse = await fetch("https://api.github.com/repos/LuaLS/lua-language-server/releases/latest")
++          const releaseResponse = await fetch("https://api.github.com/repos/LuaLS/lua-language-server/releases/latest")
+         if (!releaseResponse.ok) {
+           log.error("Failed to fetch lua-language-server release info")
+           return
+@@ -1537,6 +1706,7 @@ export namespace LSPServer {
+         }
+ 
+         log.info(`installed lua-language-server`, { bin })
++        }
+       }
+ 
+       return {
+@@ -1693,6 +1863,24 @@ export namespace LSPServer {
+       })
+ 
+       if (!bin) {
++        // onprem-fork: check for offline terraform-ls first
++        if (Onprem.isEnabled()) {
++          const offlineBin = Onprem.resolveLspBinary("terraform-ls", "terraform-ls" + (process.platform === "win32" ? ".exe" : ""))
++          if (offlineBin && (await Filesystem.exists(offlineBin))) {
++            log.info("using onprem terraform-ls", { path: offlineBin })
++            return {
++              process: spawn(offlineBin, ["serve"], { cwd: root }),
++              initialization: {
++                experimentalFeatures: {
++                  prefillRequiredFields: true,
++                  validateOnSave: true,
++                },
++              },
++            }
++          }
++          log.warn("onprem mode enabled but terraform-ls not found in deps")
++        }
++
+         if (Flag.OPENCODE_DISABLE_LSP_DOWNLOAD) return
+         log.info("downloading terraform-ls from HashiCorp releases")
+ 
+@@ -1776,8 +1964,27 @@ export namespace LSPServer {
+       })
+ 
+       if (!bin) {
+-        if (Flag.OPENCODE_DISABLE_LSP_DOWNLOAD) return
+-        log.info("downloading texlab from GitHub releases")
++        // onprem-fork: check for offline texlab first
++        if (Onprem.isEnabled()) {
++          const offlineBin = path.join(Global.Path.bin, "lsp", "texlab", "bin", "texlab")
++          if (Onprem.getDepsPath()) {
++            const depsBin = Onprem.resolveLspBinary("texlab", "texlab")
++            if (depsBin && (await Filesystem.exists(depsBin))) {
++              log.info("using onprem texlab", { path: depsBin })
++              bin = depsBin
++            }
++          }
++          if (!bin && offlineBin && (await Filesystem.exists(offlineBin))) {
++            log.info("using offline texlab", { path: offlineBin })
++            bin = offlineBin
++          } else if (!bin) {
++            log.warn("onprem mode enabled but texlab not found in deps")
++          }
++        }
++
++        if (!bin) {
++          if (Flag.OPENCODE_DISABLE_LSP_DOWNLOAD) return
++          log.info("downloading texlab from GitHub releases")
+ 
+         const response = await fetch("https://api.github.com/repos/latex-lsp/texlab/releases/latest")
+         if (!response.ok) {
+@@ -1846,6 +2053,7 @@ export namespace LSPServer {
+         }
+ 
+         log.info("installed texlab", { bin })
++        }
+       }
+ 
+       return {
+@@ -1865,6 +2073,25 @@ export namespace LSPServer {
+       const args: string[] = []
+       if (!binary) {
+         const js = path.join(Global.Path.bin, "node_modules", "dockerfile-language-server-nodejs", "lib", "server.js")
++        // onprem-fork: check for offline dockerfile-language-server-nodejs first
++        if (Onprem.isEnabled()) {
++          const depsPkg = Onprem.resolveNpmPackage("dockerfile-language-server-nodejs")
++          if (depsPkg) {
++            const depsServerJs = path.join(depsPkg, "lib", "server.js")
++            if (await Filesystem.exists(depsServerJs)) {
++              log.info("using onprem dockerfile-language-server-nodejs", { path: depsServerJs })
++              binary = BunProc.which()
++              args.push("run", depsServerJs)
++              args.push("--stdio")
++              return {
++                process: spawn(binary, args, {
++                  cwd: root,
++                  env: { ...process.env, BUN_BE_BUN: "1" },
++                }),
++              }
++            }
++          }
++        }
+         if (!(await Filesystem.exists(js))) {
+           if (Flag.OPENCODE_DISABLE_LSP_DOWNLOAD) return
+           await Process.spawn([BunProc.which(), "install", "dockerfile-language-server-nodejs"], {
+@@ -1975,8 +2202,27 @@ export namespace LSPServer {
+       })
+ 
+       if (!bin) {
+-        if (Flag.OPENCODE_DISABLE_LSP_DOWNLOAD) return
+-        log.info("downloading tinymist from GitHub releases")
++        // onprem-fork: check for offline tinymist first
++        if (Onprem.isEnabled()) {
++          const offlineBin = path.join(Global.Path.bin, "lsp", "tinymist", "bin", "tinymist")
++          if (Onprem.getDepsPath()) {
++            const depsBin = Onprem.resolveLspBinary("tinymist", "tinymist")
++            if (depsBin && (await Filesystem.exists(depsBin))) {
++              log.info("using onprem tinymist", { path: depsBin })
++              bin = depsBin
++            }
++          }
++          if (!bin && offlineBin && (await Filesystem.exists(offlineBin))) {
++            log.info("using offline tinymist", { path: offlineBin })
++            bin = offlineBin
++          } else if (!bin) {
++            log.warn("onprem mode enabled but tinymist not found in deps")
++          }
++        }
++
++        if (!bin) {
++          if (Flag.OPENCODE_DISABLE_LSP_DOWNLOAD) return
++          log.info("downloading tinymist from GitHub releases")
+ 
+         const response = await fetch("https://api.github.com/repos/Myriad-Dreamin/tinymist/releases/latest")
+         if (!response.ok) {
+@@ -2051,6 +2297,7 @@ export namespace LSPServer {
+         }
+ 
+         log.info("installed tinymist", { bin })
++        }
+       }
+ 
+       return {

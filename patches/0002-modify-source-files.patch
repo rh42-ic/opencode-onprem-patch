@@ -1,0 +1,165 @@
+diff --git a/packages/opencode/src/file/ripgrep.ts b/packages/opencode/src/file/ripgrep.ts
+index 601c82e..ee0029c 100644
+--- a/packages/opencode/src/file/ripgrep.ts
++++ b/packages/opencode/src/file/ripgrep.ts
+@@ -13,6 +13,7 @@ import { text } from "node:stream/consumers"
+ 
+ import { ZipReader, BlobReader, BlobWriter } from "@zip.js/zip.js"
+ import { Log } from "@/util/log"
++import { Onprem } from "../onprem"
+ 
+ export namespace Ripgrep {
+   const log = Log.create({ service: "ripgrep" })
+@@ -134,6 +135,20 @@ export namespace Ripgrep {
+       if (stat?.isFile()) return { filepath: system }
+       log.warn("bun.which returned invalid rg path", { filepath: system })
+     }
++
++    // onprem-fork: check offline deps for bundled ripgrep binary
++    if (Onprem.isEnabled()) {
++      const offlinePath = Onprem.resolveBinary("rg" + (process.platform === "win32" ? ".exe" : ""), "ripgrep")
++      if (offlinePath) {
++        const offlineFile = Bun.file(offlinePath)
++        if (await offlineFile.exists()) {
++          log.info("using onprem ripgrep", { path: offlinePath })
++          return { filepath: offlinePath }
++        }
++      }
++      log.warn("onprem mode enabled but ripgrep not found in deps")
++    }
++
+     const filepath = path.join(Global.Path.bin, "rg" + (process.platform === "win32" ? ".exe" : ""))
+ 
+     if (!(await Filesystem.exists(filepath))) {
+diff --git a/packages/opencode/src/flag/flag.ts b/packages/opencode/src/flag/flag.ts
+index f1688a1..9641867 100644
+--- a/packages/opencode/src/flag/flag.ts
++++ b/packages/opencode/src/flag/flag.ts
+@@ -65,6 +65,10 @@ export namespace Flag {
+   export const OPENCODE_SKIP_MIGRATIONS = truthy("OPENCODE_SKIP_MIGRATIONS")
+   export const OPENCODE_STRICT_CONFIG_DEPS = truthy("OPENCODE_STRICT_CONFIG_DEPS")
+ 
++  // onprem-fork: onprem mode flags
++  export const OPENCODE_ONPREM_MODE = truthy("OPENCODE_ONPREM_MODE")
++  export const OPENCODE_ONPREM_DEPS_PATH = process.env["OPENCODE_ONPREM_DEPS_PATH"]
++
+   function number(key: string) {
+     const value = process.env[key]
+     if (!value) return undefined
+diff --git a/packages/opencode/src/installation/index.ts b/packages/opencode/src/installation/index.ts
+index 92a3bfc..f970027 100644
+--- a/packages/opencode/src/installation/index.ts
++++ b/packages/opencode/src/installation/index.ts
+@@ -1,5 +1,6 @@
+ import { BusEvent } from "@/bus/bus-event"
+ import path from "path"
++import fs from "fs"
+ import z from "zod"
+ import { NamedError } from "@opencode-ai/util/error"
+ import { Log } from "../util/log"
+@@ -13,6 +14,29 @@ declare global {
+   const OPENCODE_CHANNEL: string
+ }
+ 
++// onprem-fork: read bundle info from manifest
++interface BundleInfo {
++  version: string
++  commitSha?: string
++}
++
++function readBundleInfo(): BundleInfo | undefined {
++  if (!Flag.OPENCODE_ONPREM_DEPS_PATH) return undefined
++  try {
++    const bundleRoot = path.dirname(Flag.OPENCODE_ONPREM_DEPS_PATH)
++    const manifestPath = path.join(bundleRoot, "manifest.json")
++    const content = fs.readFileSync(manifestPath, "utf-8")
++    const manifest = JSON.parse(content)
++    if (!manifest.bundleVersion) return undefined
++    return {
++      version: manifest.bundleVersion,
++      commitSha: manifest.commitSha,
++    }
++  } catch {
++    return undefined
++  }
++}
++
+ export namespace Installation {
+   const log = Log.create({ service: "installation" })
+ 
+@@ -235,6 +259,12 @@ export namespace Installation {
+   export const CHANNEL = typeof OPENCODE_CHANNEL === "string" ? OPENCODE_CHANNEL : "local"
+   export const USER_AGENT = `opencode/${CHANNEL}/${VERSION}/${Flag.OPENCODE_CLIENT}`
+ 
++  // onprem-fork: display version from bundle manifest
++  const BUNDLE_INFO = readBundleInfo()
++  export const DISPLAY_VERSION = BUNDLE_INFO
++    ? `onprem-v${BUNDLE_INFO.version}${BUNDLE_INFO.commitSha ? ` (${BUNDLE_INFO.commitSha})` : ""}`
++    : VERSION
++
+   export async function latest(installMethod?: Method) {
+     const detectedMethod = installMethod || (await method())
+ 
+diff --git a/packages/opencode/src/provider/models.ts b/packages/opencode/src/provider/models.ts
+index bae3317..6b9f171 100644
+--- a/packages/opencode/src/provider/models.ts
++++ b/packages/opencode/src/provider/models.ts
+@@ -6,6 +6,7 @@ import { Installation } from "../installation"
+ import { Flag } from "../flag/flag"
+ import { lazy } from "@/util/lazy"
+ import { Filesystem } from "../util/filesystem"
++import { Onprem } from "../onprem"
+ 
+ // Try to import bundled snapshot (generated at build time)
+ // Falls back to undefined in dev mode when snapshot doesn't exist
+@@ -99,6 +100,15 @@ export namespace ModelsDev {
+   })
+ 
+   export async function get() {
++    // onprem-fork: in onprem mode, try bundled models from deps first
++    if (Onprem.isEnabled()) {
++      const depsPath = Onprem.getDepsPath()
++      if (depsPath) {
++        const offlineResult = await Filesystem.readJson(path.join(depsPath, "models.json")).catch(() => {})
++        if (offlineResult) return offlineResult as Record<string, Provider>
++      }
++    }
++
+     const result = await Data()
+     return result as Record<string, Provider>
+   }
+@@ -121,7 +131,8 @@ export namespace ModelsDev {
+   }
+ }
+ 
+-if (!Flag.OPENCODE_DISABLE_MODELS_FETCH && !process.argv.includes("--get-yargs-completions")) {
++// onprem-fork: skip models refresh in onprem mode
++if (!Onprem.isEnabled() && !Flag.OPENCODE_DISABLE_MODELS_FETCH && !process.argv.includes("--get-yargs-completions")) {
+   ModelsDev.refresh()
+   setInterval(
+     async () => {
+diff --git a/packages/opencode/src/server/server.ts b/packages/opencode/src/server/server.ts
+index 55bcf2d..d107fbe 100644
+--- a/packages/opencode/src/server/server.ts
++++ b/packages/opencode/src/server/server.ts
+@@ -45,6 +45,7 @@ import { PermissionRoutes } from "./routes/permission"
+ import { GlobalRoutes } from "./routes/global"
+ import { MDNS } from "./mdns"
+ import { lazy } from "@/util/lazy"
++import { Onprem } from "../onprem"
+ 
+ // @ts-ignore This global is needed to prevent ai-sdk from logging warnings to stdout https://github.com/vercel/ai/blob/2dc67e0ef538307f21368db32d5a12345d98831b/packages/ai/src/logger/log-warnings.ts#L85
+ globalThis.AI_SDK_LOG_WARNINGS = false
+@@ -555,6 +556,12 @@ export namespace Server {
+         },
+       )
+       .all("/*", async (c) => {
++        // onprem-fork: serve bundled web app in onprem mode
++        const onpremStatic = await Onprem.tryServeStaticFile(c.req.path)
++        if (onpremStatic) {
++          return new Response(onpremStatic.body, { headers: { "Content-Type": onpremStatic.mime } })
++        }
++
+         const path = c.req.path
+ 
+         const response = await proxy(`https://app.opencode.ai${path}`, {
