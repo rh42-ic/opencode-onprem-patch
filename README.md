@@ -1,3 +1,7 @@
+[中文](README.md) | [English](README_EN.md)
+
+---
+
 # OpenCode Onprem 版本
 
 本目录包含将 opencode 原版修改为 onprem 版本所需的 **git patch 文件**、脚本和文档。

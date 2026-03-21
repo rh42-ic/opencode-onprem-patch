@@ -215,7 +215,7 @@ async function createTarball(variant: BuildVariant): Promise<void> {
   await fs.unlink(tarballPath).catch(() => {})
 
   const proc = Bun.spawn(
-    ["tar", "--zstd", "-cf", TARBALL_NAME, BUNDLE_DIR],
+    ["tar", "-I", "zstd -15 -T0", "-cf", TARBALL_NAME, BUNDLE_DIR],
     {
       cwd: "dist",
       stdout: "inherit",
