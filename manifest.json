@@ -42,17 +42,10 @@
       "search_marker": "// onprem-fork:",
       "patch": "0002-modify-source-files.patch"
     },
-    {
+{
       "file": "packages/opencode/src/server/server.ts",
       "action": "modify",
       "description": "Serve static files from deps/app in onprem mode",
-      "search_marker": "// onprem-fork:",
-      "patch": "0002-modify-source-files.patch"
-    },
-    {
-      "file": "packages/opencode/src/installation/index.ts",
-      "action": "modify",
-      "description": "Display onprem version from manifest",
       "search_marker": "// onprem-fork:",
       "patch": "0002-modify-source-files.patch"
     },

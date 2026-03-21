@@ -51,7 +51,6 @@ git apply /path/to/opencode-onprem/patches/parsers-config-onprem.patch
 | `packages/opencode/src/file/ripgrep.ts` | 添加离线 ripgrep 路径检查 |
 | `packages/opencode/src/provider/models.ts` | 添加从 deps/models.json 加载模型数据 |
 | `packages/opencode/src/server/server.ts` | 添加 Web UI 静态文件服务 |
-| `packages/opencode/src/installation/index.ts` | 添加版本显示为 `onprem-v{版本}` |
 
 ### lsp-server-onprem.patch
 
@@ -174,48 +173,6 @@ if (onpremStatic) {
 }
 ```
 
-### installation/index.ts
-
-1. 添加 fs 导入：
-```typescript
-import fs from "fs"
-```
-
-2. 在 declare global 之前添加：
-```typescript
-// onprem-fork: read bundle info from manifest
-interface BundleInfo {
-  version: string
-  commitSha?: string
-}
-
-function readBundleInfo(): BundleInfo | undefined {
-  if (!Flag.OPENCODE_ONPREM_DEPS_PATH) return undefined
-  try {
-    const bundleRoot = path.dirname(Flag.OPENCODE_ONPREM_DEPS_PATH)
-    const manifestPath = path.join(bundleRoot, "manifest.json")
-    const content = fs.readFileSync(manifestPath, "utf-8")
-    const manifest = JSON.parse(content)
-    if (!manifest.bundleVersion) return undefined
-    return {
-      version: manifest.bundleVersion,
-      commitSha: manifest.commitSha,
-    }
-  } catch {
-    return undefined
-  }
-}
-```
-
-3. 在 VERSION 定义之后添加：
-```typescript
-// onprem-fork: display version from bundle manifest
-const BUNDLE_INFO = readBundleInfo()
-export const DISPLAY_VERSION = BUNDLE_INFO
-  ? `onprem-v${BUNDLE_INFO.version}${BUNDLE_INFO.commitSha ? ` (${BUNDLE_INFO.commitSha})` : ""}`
-  : VERSION
-```
-
 ### lsp/server.ts
 
 1. 添加导入：
@@ -243,15 +200,22 @@ bun run script/download-onprem-deps.ts
 ### 2. 打包离线 bundle
 
 ```bash
-BUNDLE_VERSION=1.2.27 BUNDLE_COMMIT_SHA=$(git rev-parse --short HEAD) \
-  bun run script/package-onprem-bundle.ts
+OPENCODE_VERSION=1.2.27 bun run script/package-onprem-bundle.ts
 ```
+
+> **注意：** `OPENCODE_VERSION` 环境变量用于设置编译后的版本号。
 
 ### 3. 在离线机器上部署
 
 ```bash
-tar -xzf opencode-onprem-linux-x64.tar.gz
+# 标准版本（需要 AVX2）
+tar --zstd -xf opencode-onprem-linux-x64.tar.zst
 cd opencode-onprem-linux-x64
+./opencode-onprem
+
+# 或兼容版本（无需 AVX2，适用于旧 CPU）
+tar --zstd -xf opencode-onprem-linux-x64-baseline.tar.zst
+cd opencode-onprem-linux-x64-baseline
 ./opencode-onprem
 ```
 

@@ -5,11 +5,12 @@ import fs from "fs/promises"
 import path from "path"
 
 const DEPS_DIR = "dist/onprem-deps"
-const BUNDLE_DIR = "dist/opencode-onprem-linux-x64"
-const TARBALL_NAME = "opencode-onprem-linux-x64.tar.gz"
+const BUNDLE_BASE_NAME = "opencode-onprem-linux-x64"
 
-async function buildOpencode(): Promise<string> {
-  console.log("\n=== Building opencode for Linux x64 ===")
+type BuildVariant = "normal" | "baseline"
+
+async function buildAll(): Promise<void> {
+  console.log("\n=== Building opencode (all targets) ===")
 
   console.log("Installing dependencies...")
   const installProc = Bun.spawn(["bun", "install"], {
@@ -35,32 +36,42 @@ async function buildOpencode(): Promise<string> {
     throw new Error("Failed to build opencode")
   }
 
-  const distDir = "packages/opencode/dist"
-  const entries = await fs.readdir(distDir)
-  const linuxX64Dir = entries.find(e => e.includes("linux") && e.includes("x64") && !e.includes("baseline") && !e.includes("musl"))
-
-  if (!linuxX64Dir) {
-    throw new Error("Could not find linux-x64 build output")
-  }
-
-  console.log(`Build complete: ${linuxX64Dir}`)
-  return path.join(distDir, linuxX64Dir)
+  console.log("Build complete")
 }
 
-async function createBundle(buildDir: string): Promise<void> {
-  console.log("\n=== Creating bundle structure ===")
+async function findBuildDir(variant: BuildVariant): Promise<string> {
+  const distDir = "packages/opencode/dist"
+  const entries = await fs.readdir(distDir)
+  const targetName = variant === "baseline" ? "linux-x64-baseline" : "linux-x64"
+  const matchDir = entries.find(e => 
+    e.includes(targetName) && !e.includes("musl")
+  )
 
-  await fs.rm(BUNDLE_DIR, { recursive: true, force: true })
-  await fs.mkdir(path.join(BUNDLE_DIR, "bin"), { recursive: true })
-  await fs.mkdir(path.join(BUNDLE_DIR, "deps"), { recursive: true })
+  if (!matchDir) {
+    throw new Error(`Could not find ${targetName} build output. Available: ${entries.join(", ")}`)
+  }
+
+  return path.join(distDir, matchDir)
+}
+
+async function createBundle(buildDir: string, variant: BuildVariant): Promise<void> {
+  const suffix = variant === "baseline" ? "-baseline" : ""
+  const BUNDLE_DIR = `${BUNDLE_BASE_NAME}${suffix}`
+  const bundlePath = path.join("dist", BUNDLE_DIR)
+
+  console.log(`\n=== Creating bundle (${variant}) ===`)
+
+  await fs.rm(bundlePath, { recursive: true, force: true })
+  await fs.mkdir(path.join(bundlePath, "bin"), { recursive: true })
+  await fs.mkdir(path.join(bundlePath, "deps"), { recursive: true })
 
   console.log("Copying opencode binary...")
   const binaryPath = path.join(buildDir, "bin", "opencode")
-  await fs.copyFile(binaryPath, path.join(BUNDLE_DIR, "bin", "opencode"))
-  await fs.chmod(path.join(BUNDLE_DIR, "bin", "opencode"), 0o755)
+  await fs.copyFile(binaryPath, path.join(bundlePath, "bin", "opencode"))
+  await fs.chmod(path.join(bundlePath, "bin", "opencode"), 0o755)
 
   console.log("Copying dependencies...")
-  await $`cp -r ${DEPS_DIR}/* ${path.join(BUNDLE_DIR, "deps")}/`
+  await $`cp -r ${DEPS_DIR}/* ${path.join(bundlePath, "deps")}/`
 
   console.log("Copying OpenTUI native library...")
   const opentuiGlob = new Bun.Glob("node_modules/.bun/@opentui+core-linux-x64@*/node_modules/@opentui/core-linux-x64/libopentui.so")
@@ -70,30 +81,23 @@ async function createBundle(buildDir: string): Promise<void> {
   }
   const opentuiSoPath = opentuiMatches[0]
   console.log(`Found OpenTUI at: ${opentuiSoPath}`)
-  await fs.mkdir(path.join(BUNDLE_DIR, "deps", "opentui"), { recursive: true })
-  await fs.copyFile(opentuiSoPath, path.join(BUNDLE_DIR, "deps", "opentui", "libopentui.so"))
+  await fs.mkdir(path.join(bundlePath, "deps", "opentui"), { recursive: true })
+  await fs.copyFile(opentuiSoPath, path.join(bundlePath, "deps", "opentui", "libopentui.so"))
 
+  console.log("Creating manifest...")
   const manifestContent = await fs.readFile(path.join(DEPS_DIR, "manifest.json"), "utf-8")
   const manifest = JSON.parse(manifestContent)
+  manifest.baseline = variant === "baseline"
+  await Bun.write(path.join(bundlePath, "manifest.json"), JSON.stringify(manifest, null, 2))
 
-  const bundleVersion = process.env.BUNDLE_VERSION
-  const commitSha = process.env.BUNDLE_COMMIT_SHA
-  if (bundleVersion) {
-    manifest.bundleVersion = bundleVersion
-    console.log(`Injecting bundleVersion: ${bundleVersion}`)
-  }
-  if (commitSha) {
-    manifest.commitSha = commitSha
-    console.log(`Injecting commitSha: ${commitSha}`)
-  }
-
-  await Bun.write(path.join(BUNDLE_DIR, "manifest.json"), JSON.stringify(manifest, null, 2))
-
-  console.log("Bundle structure created")
+  console.log("Bundle created")
 }
 
-async function createWrapperScript(): Promise<void> {
-  console.log("\n=== Creating wrapper script ===")
+async function createWrapperScript(variant: BuildVariant): Promise<void> {
+  const suffix = variant === "baseline" ? "-baseline" : ""
+  const BUNDLE_DIR = path.join("dist", `${BUNDLE_BASE_NAME}${suffix}`)
+
+  console.log("Creating wrapper script...")
 
   const wrapperScript = `#!/bin/bash
 # OpenCode Onprem Wrapper Script
@@ -112,26 +116,33 @@ exec "\$SCRIPT_DIR/bin/opencode" "\$@"
 
   await Bun.write(path.join(BUNDLE_DIR, "opencode-onprem"), wrapperScript)
   await fs.chmod(path.join(BUNDLE_DIR, "opencode-onprem"), 0o755)
-
-  console.log("Wrapper script created")
 }
 
-async function createReadme(): Promise<void> {
-  console.log("\n=== Creating README ===")
+async function createReadme(variant: BuildVariant): Promise<void> {
+  const suffix = variant === "baseline" ? "-baseline" : ""
+  const BUNDLE_DIR = path.join("dist", `${BUNDLE_BASE_NAME}${suffix}`)
+
+  console.log("Creating README...")
+
+  const variantNote = variant === "baseline" 
+    ? "\nThis is the **baseline** version for CPUs without AVX2 support.\n"
+    : ""
 
   const readme = `# OpenCode Onprem Bundle
 
 This is a self-contained onprem bundle of OpenCode for Linux x64.
-
+${variantNote}
 ## Contents
 
 - \`bin/opencode\` - Main OpenCode binary
 - \`deps/\` - Pre-bundled dependencies
   - \`ripgrep/\` - Ripgrep binary for fast file searching
-  - \`lsp/\` - Language server binaries (clangd, rust-analyzer)
-  - \`node_modules/\` - npm packages (pyright, typescript-language-server)
+  - \`lsp/\` - Language server binaries
+  - \`node_modules/\` - npm packages (pyright, typescript-language-server, etc.)
+  - \`tree-sitter/\` - Tree-sitter parsers
   - \`app/\` - Pre-built web UI
   - \`models.json\` - Model metadata
+  - \`opentui/\` - OpenTUI native library
 - \`manifest.json\` - Version information for all bundled components
 - \`opencode-onprem\` - Wrapper script that sets up the environment
 
@@ -166,6 +177,12 @@ This bundle includes LSP support for:
 - **TypeScript/JavaScript** - via typescript-language-server
 - **C/C++** - via clangd
 - **Rust** - via rust-analyzer
+- **Zig** - via zls
+- **Lua** - via lua-language-server
+- **Terraform** - via terraform-ls
+- **LaTeX** - via texlab
+- **Typst** - via tinymist
+- And more...
 
 ## Environment Variables
 
@@ -185,19 +202,20 @@ that would otherwise fail on systems with noexec /tmp.
 `
 
   await Bun.write(path.join(BUNDLE_DIR, "README.md"), readme)
-
-  console.log("README created")
 }
 
-async function createTarball(): Promise<void> {
-  console.log("\n=== Creating tarball ===")
+async function createTarball(variant: BuildVariant): Promise<void> {
+  const suffix = variant === "baseline" ? "-baseline" : ""
+  const BUNDLE_DIR = `${BUNDLE_BASE_NAME}${suffix}`
+  const TARBALL_NAME = `${BUNDLE_DIR}.tar.zst`
+
+  console.log(`\n=== Creating tarball (${variant}) ===`)
 
   const tarballPath = path.join("dist", TARBALL_NAME)
-
   await fs.unlink(tarballPath).catch(() => {})
 
   const proc = Bun.spawn(
-    ["tar", "-czf", TARBALL_NAME, "opencode-onprem-linux-x64"],
+    ["tar", "--zstd", "-cf", TARBALL_NAME, BUNDLE_DIR],
     {
       cwd: "dist",
       stdout: "inherit",
@@ -212,7 +230,7 @@ async function createTarball(): Promise<void> {
   const stats = await fs.stat(tarballPath)
   const sizeMB = (stats.size / (1024 * 1024)).toFixed(2)
 
-  console.log(`Tarball created: ${tarballPath} (${sizeMB} MB)`)
+  console.log(`Tarball: dist/${TARBALL_NAME} (${sizeMB} MB)`)
 }
 
 async function main() {
@@ -225,15 +243,26 @@ async function main() {
     process.exit(1)
   }
 
-  const buildDir = await buildOpencode()
-  await createBundle(buildDir)
-  await createWrapperScript()
-  await createReadme()
-  await createTarball()
+  await buildAll()
+
+  const variants: BuildVariant[] = ["normal", "baseline"]
+
+  for (const variant of variants) {
+    const buildDir = await findBuildDir(variant)
+    console.log(`\nFound ${variant} build: ${buildDir}`)
+    await createBundle(buildDir, variant)
+    await createWrapperScript(variant)
+    await createReadme(variant)
+    await createTarball(variant)
+  }
 
   console.log("\n=== Packaging complete ===")
-  console.log(`Bundle directory: ${BUNDLE_DIR}`)
-  console.log(`Tarball: dist/${TARBALL_NAME}`)
+  console.log("\nBundles created:")
+  for (const variant of variants) {
+    const suffix = variant === "baseline" ? "-baseline" : ""
+    const sizeMB = (await fs.stat(`dist/${BUNDLE_BASE_NAME}${suffix}.tar.zst`)).size / (1024 * 1024)
+    console.log(`  dist/${BUNDLE_BASE_NAME}${suffix}.tar.zst (${sizeMB.toFixed(2)} MB)`)
+  }
 }
 
 main().catch((err) => {

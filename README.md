@@ -59,15 +59,26 @@ bun run script/download-onprem-deps.ts
 ### 3. 打包
 
 ```bash
-BUNDLE_VERSION=1.2.27 bun run script/package-onprem-bundle.ts
+OPENCODE_VERSION=1.2.27 bun run script/package-onprem-bundle.ts
 ```
+
+> **注意：** `OPENCODE_VERSION` 环境变量用于设置编译后的版本号。
+
+打包完成后会生成两个版本：
+- `opencode-onprem-linux-x64.tar.zst` - 标准版本（需要 AVX2 支持）
+- `opencode-onprem-linux-x64-baseline.tar.zst` - 兼容版本（无需 AVX2，适用于旧 CPU）
 
 ### 4. 部署到离线环境
 
 ```bash
-# 在离线环境
-tar -xzf opencode-onprem-linux-x64.tar.gz
+# 标准版本（需要 AVX2）
+tar --zstd -xf opencode-onprem-linux-x64.tar.zst
 cd opencode-onprem-linux-x64
+./opencode-onprem
+
+# 或兼容版本（无需 AVX2）
+tar --zstd -xf opencode-onprem-linux-x64-baseline.tar.zst
+cd opencode-onprem-linux-x64-baseline
 ./opencode-onprem
 ```
 
@@ -87,7 +98,6 @@ cd opencode-onprem-linux-x64
 - `packages/opencode/src/file/ripgrep.ts` - 离线 ripgrep
 - `packages/opencode/src/provider/models.ts` - 离线 models.json
 - `packages/opencode/src/server/server.ts` - Web UI 静态服务
-- `packages/opencode/src/installation/index.ts` - 版本显示
 
 ### lsp-server-onprem.patch
 
@@ -188,7 +198,6 @@ deps/
 | 特性 | opencode-offline | opencode-onprem |
 |------|------------------|-----------------|
 | 环境变量 | `OPENCODE_OFFLINE_*` | `OPENCODE_ONPREM_*` |
-| 版本显示 | `offline-v{x}` | `onprem-v{版本}` |
 | 补丁格式 | 手动修改 | git patch 文件 |
 | LSP 支持 | 5个核心 LSP | 15个 LSP |
 | Tree-sitter | 无 | 21种语言 |
@@ -216,7 +225,7 @@ git apply /path/to/opencode-onprem/patches/parsers-config-onprem.patch
 # 4. 测试构建
 bun install
 bun run script/download-onprem-deps.ts
-BUNDLE_VERSION=x.x.x bun run script/package-onprem-bundle.ts
+OPENCODE_VERSION=x.x.x bun run script/package-onprem-bundle.ts
 
 # 5. 更新 patch 文件（如果有修改）
 git add -A && git commit -m "onprem modifications"
