@@ -38,7 +38,7 @@
     {
       "file": "packages/opencode/src/provider/models.ts",
       "action": "modify",
-      "description": "Load models.json from deps directory in onprem mode",
+      "description": "Load models.json from deps directory in onprem mode, with fallback to bundled snapshot and improved logging",
       "search_marker": "// onprem-fork:",
       "patch": "0002-modify-source-files.patch"
     },

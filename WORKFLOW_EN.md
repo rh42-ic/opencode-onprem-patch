@@ -53,7 +53,7 @@ Modified files:
 |-----------|--------------|
 | `packages/opencode/src/flag/flag.ts` | Add `OPENCODE_ONPREM_MODE` and `OPENCODE_ONPREM_DEPS_PATH` flags |
 | `packages/opencode/src/file/ripgrep.ts` | Add offline ripgrep path check |
-| `packages/opencode/src/provider/models.ts` | Add loading model data from deps/models.json |
+| `packages/opencode/src/provider/models.ts` | Add loading model data from deps/models.json with dual fallback and logging |
 | `packages/opencode/src/server/server.ts` | Add Web UI static file serving |
 
 ### lsp-server-onprem.patch
@@ -140,19 +140,56 @@ if (Onprem.isEnabled()) {
 import { Onprem } from "../onprem"
 ```
 
-2. Modify the beginning of `get()` function:
+2. Modify the `Data()` function to add onprem check after cache read and before snapshot import:
 ```typescript
-// onprem-fork: in onprem mode, try bundled models from deps first
-if (Onprem.isEnabled()) {
-  const depsPath = Onprem.getDepsPath()
-  if (depsPath) {
-    const offlineResult = await Filesystem.readJson(path.join(depsPath, "models.json")).catch(() => {})
-    if (offlineResult) return offlineResult as Record<string, Provider>
+export const Data = lazy(async () => {
+  const result = await Filesystem.readJson(Flag.OPENCODE_MODELS_PATH ?? filepath).catch(() => {})
+  if (result) return result
+  // onprem-fork: try deps models.json from onprem bundle before snapshot
+  if (Onprem.isEnabled()) {
+    const depsPath = Onprem.getDepsPath()
+    if (depsPath) {
+      const offlineResult = await Filesystem.readJson(path.join(depsPath, "models.json")).catch(() => {})
+      if (offlineResult) {
+        log.info("loaded models from onprem deps", { path: depsPath })
+        return offlineResult as Record<string, Provider>
+      }
+      log.warn("onprem enabled but deps models.json not found", { path: depsPath })
+    }
   }
+  // @ts-ignore
+  const snapshot = await import("./models-snapshot")
+    .then((m) => m.snapshot as Record<string, unknown>)
+    .catch(() => undefined)
+  if (snapshot) return snapshot
+  if (Flag.OPENCODE_DISABLE_MODELS_FETCH) return {}
+  const json = await fetch(`${url()}/api.json`).then((x) => x.text())
+  return JSON.parse(json)
+})
+```
+
+3. Modify the beginning of `get()` function with improved error logging:
+```typescript
+export async function get() {
+  // onprem-fork: in onprem mode, try bundled models from deps first
+  if (Onprem.isEnabled()) {
+    const depsPath = Onprem.getDepsPath()
+    if (depsPath) {
+      const modelsPath = path.join(depsPath, "models.json")
+      const offlineResult = await Filesystem.readJson(modelsPath).catch((e) => {
+        log.warn("failed to read onprem models.json", { path: modelsPath, error: String(e) })
+        return undefined
+      })
+      if (offlineResult) return offlineResult as Record<string, Provider>
+    }
+  }
+
+  const result = await Data()
+  return result as Record<string, Provider>
 }
 ```
 
-3. Modify refresh logic to skip onprem mode:
+4. Modify refresh logic to skip onprem mode:
 ```typescript
 // onprem-fork: skip models refresh in onprem mode
 if (!Onprem.isEnabled() && !Flag.OPENCODE_DISABLE_MODELS_FETCH && !process.argv.includes("--get-yargs-completions")) {
@@ -160,6 +197,17 @@ if (!Onprem.isEnabled() && !Flag.OPENCODE_DISABLE_MODELS_FETCH && !process.argv.
   // ...
 }
 ```
+
+**Model Loading Priority (onprem mode):**
+1. Cache file (`~/.cache/opencode/models.json` or `OPENCODE_MODELS_PATH`)
+2. onprem deps directory (`OPENCODE_ONPREM_DEPS_PATH/models.json`)
+3. Bundled snapshot (`models-snapshot.ts`)
+4. Network fetch (if `OPENCODE_DISABLE_MODELS_FETCH` is not set)
+
+**Log Output:**
+- Successfully loaded from onprem deps: `log.info("loaded models from onprem deps", { path: depsPath })`
+- deps directory exists but models.json missing: `log.warn("onprem enabled but deps models.json not found", { path: depsPath })`
+- Failed to read models.json: `log.warn("failed to read onprem models.json", { path: modelsPath, error: String(e) })`
 
 ### server/server.ts
 

@@ -53,7 +53,7 @@ git apply /path/to/opencode-onprem/patches/parsers-config-onprem.patch
 |----------|----------|
 | `packages/opencode/src/flag/flag.ts` | 添加 `OPENCODE_ONPREM_MODE` 和 `OPENCODE_ONPREM_DEPS_PATH` 标志 |
 | `packages/opencode/src/file/ripgrep.ts` | 添加离线 ripgrep 路径检查 |
-| `packages/opencode/src/provider/models.ts` | 添加从 deps/models.json 加载模型数据 |
+| `packages/opencode/src/provider/models.ts` | 添加从 deps/models.json 加载模型数据，含双重回退和日志 |
 | `packages/opencode/src/server/server.ts` | 添加 Web UI 静态文件服务 |
 
 ### lsp-server-onprem.patch
@@ -140,19 +140,56 @@ if (Onprem.isEnabled()) {
 import { Onprem } from "../onprem"
 ```
 
-2. 修改 `get()` 函数开头：
+2. 修改 `Data()` 函数，在缓存读取后、快照导入前添加 onprem 检查：
 ```typescript
-// onprem-fork: in onprem mode, try bundled models from deps first
-if (Onprem.isEnabled()) {
-  const depsPath = Onprem.getDepsPath()
-  if (depsPath) {
-    const offlineResult = await Filesystem.readJson(path.join(depsPath, "models.json")).catch(() => {})
-    if (offlineResult) return offlineResult as Record<string, Provider>
+export const Data = lazy(async () => {
+  const result = await Filesystem.readJson(Flag.OPENCODE_MODELS_PATH ?? filepath).catch(() => {})
+  if (result) return result
+  // onprem-fork: try deps models.json from onprem bundle before snapshot
+  if (Onprem.isEnabled()) {
+    const depsPath = Onprem.getDepsPath()
+    if (depsPath) {
+      const offlineResult = await Filesystem.readJson(path.join(depsPath, "models.json")).catch(() => {})
+      if (offlineResult) {
+        log.info("loaded models from onprem deps", { path: depsPath })
+        return offlineResult as Record<string, Provider>
+      }
+      log.warn("onprem enabled but deps models.json not found", { path: depsPath })
+    }
   }
+  // @ts-ignore
+  const snapshot = await import("./models-snapshot")
+    .then((m) => m.snapshot as Record<string, unknown>)
+    .catch(() => undefined)
+  if (snapshot) return snapshot
+  if (Flag.OPENCODE_DISABLE_MODELS_FETCH) return {}
+  const json = await fetch(`${url()}/api.json`).then((x) => x.text())
+  return JSON.parse(json)
+})
+```
+
+3. 修改 `get()` 函数开头，添加更好的错误日志：
+```typescript
+export async function get() {
+  // onprem-fork: in onprem mode, try bundled models from deps first
+  if (Onprem.isEnabled()) {
+    const depsPath = Onprem.getDepsPath()
+    if (depsPath) {
+      const modelsPath = path.join(depsPath, "models.json")
+      const offlineResult = await Filesystem.readJson(modelsPath).catch((e) => {
+        log.warn("failed to read onprem models.json", { path: modelsPath, error: String(e) })
+        return undefined
+      })
+      if (offlineResult) return offlineResult as Record<string, Provider>
+    }
+  }
+
+  const result = await Data()
+  return result as Record<string, Provider>
 }
 ```
 
-3. 修改 refresh 逻辑跳过 onprem 模式：
+4. 修改 refresh 逻辑跳过 onprem 模式：
 ```typescript
 // onprem-fork: skip models refresh in onprem mode
 if (!Onprem.isEnabled() && !Flag.OPENCODE_DISABLE_MODELS_FETCH && !process.argv.includes("--get-yargs-completions")) {
@@ -160,6 +197,17 @@ if (!Onprem.isEnabled() && !Flag.OPENCODE_DISABLE_MODELS_FETCH && !process.argv.
   // ...
 }
 ```
+
+**模型加载优先级（onprem 模式）：**
+1. 缓存文件 (`~/.cache/opencode/models.json` 或 `OPENCODE_MODELS_PATH`)
+2. onprem deps 目录 (`OPENCODE_ONPREM_DEPS_PATH/models.json`)
+3. 内置快照 (`models-snapshot.ts`)
+4. 网络获取（如果 `OPENCODE_DISABLE_MODELS_FETCH` 未设置）
+
+**日志输出：**
+- 成功从 onprem deps 加载：`log.info("loaded models from onprem deps", { path: depsPath })`
+- deps 目录存在但 models.json 不存在：`log.warn("onprem enabled but deps models.json not found", { path: depsPath })`
+- 读取 models.json 失败：`log.warn("failed to read onprem models.json", { path: modelsPath, error: String(e) })`
 
 ### server/server.ts
 

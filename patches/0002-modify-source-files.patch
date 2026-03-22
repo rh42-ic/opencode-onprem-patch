@@ -38,7 +38,7 @@ index f1688a1..9641867 100644
 @@ -65,6 +65,10 @@ export namespace Flag {
    export const OPENCODE_SKIP_MIGRATIONS = truthy("OPENCODE_SKIP_MIGRATIONS")
    export const OPENCODE_STRICT_CONFIG_DEPS = truthy("OPENCODE_STRICT_CONFIG_DEPS")
- 
+
 +  // onprem-fork: onprem mode flags
 +  export const OPENCODE_ONPREM_MODE = truthy("OPENCODE_ONPREM_MODE")
 +  export const OPENCODE_ONPREM_DEPS_PATH = process.env["OPENCODE_ONPREM_DEPS_PATH"]
@@ -47,7 +47,7 @@ index f1688a1..9641867 100644
      const value = process.env[key]
      if (!value) return undefined
 diff --git a/packages/opencode/src/provider/models.ts b/packages/opencode/src/provider/models.ts
-index bae3317..6b9f171 100644
+index bae3317..8c0d9f4 100644
 --- a/packages/opencode/src/provider/models.ts
 +++ b/packages/opencode/src/provider/models.ts
 @@ -6,6 +6,7 @@ import { Installation } from "../installation"
@@ -58,7 +58,26 @@ index bae3317..6b9f171 100644
  
  // Try to import bundled snapshot (generated at build time)
  // Falls back to undefined in dev mode when snapshot doesn't exist
-@@ -99,6 +100,15 @@ export namespace ModelsDev {
+@@ -88,6 +89,18 @@ export namespace ModelsDev {
+   export const Data = lazy(async () => {
+     const result = await Filesystem.readJson(Flag.OPENCODE_MODELS_PATH ?? filepath).catch(() => {})
+     if (result) return result
++    // onprem-fork: try deps models.json from onprem bundle before snapshot
++    if (Onprem.isEnabled()) {
++      const depsPath = Onprem.getDepsPath()
++      if (depsPath) {
++        const offlineResult = await Filesystem.readJson(path.join(depsPath, "models.json")).catch(() => {})
++        if (offlineResult) {
++          log.info("loaded models from onprem deps", { path: depsPath })
++          return offlineResult as Record<string, Provider>
++        }
++        log.warn("onprem enabled but deps models.json not found", { path: depsPath })
++      }
++    }
+     // @ts-ignore
+     const snapshot = await import("./models-snapshot")
+       .then((m) => m.snapshot as Record<string, unknown>)
+@@ -99,6 +112,19 @@ export namespace ModelsDev {
    })
  
    export async function get() {
@@ -66,7 +85,11 @@ index bae3317..6b9f171 100644
 +    if (Onprem.isEnabled()) {
 +      const depsPath = Onprem.getDepsPath()
 +      if (depsPath) {
-+        const offlineResult = await Filesystem.readJson(path.join(depsPath, "models.json")).catch(() => {})
++        const modelsPath = path.join(depsPath, "models.json")
++        const offlineResult = await Filesystem.readJson(modelsPath).catch((e) => {
++          log.warn("failed to read onprem models.json", { path: modelsPath, error: String(e) })
++          return undefined
++        })
 +        if (offlineResult) return offlineResult as Record<string, Provider>
 +      }
 +    }
@@ -74,7 +97,7 @@ index bae3317..6b9f171 100644
      const result = await Data()
      return result as Record<string, Provider>
    }
-@@ -121,7 +131,8 @@ export namespace ModelsDev {
+@@ -121,7 +147,8 @@ export namespace ModelsDev {
    }
  }
  
