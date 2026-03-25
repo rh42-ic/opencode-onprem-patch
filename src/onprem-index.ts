@@ -69,4 +69,16 @@ export namespace Onprem {
     if (!queryPath) return false
     return Filesystem.exists(queryPath)
   }
+
+  export function resolvePlugin(pkg: string): string | undefined {
+    const depsPath = getDepsPath()
+    if (!isEnabled() || !depsPath) return undefined
+    return path.join(depsPath, "plugins", "node_modules", pkg)
+  }
+
+  export async function pluginExists(pkg: string): Promise<boolean> {
+    const pluginPath = resolvePlugin(pkg)
+    if (!pluginPath) return false
+    return Filesystem.exists(pluginPath)
+  }
 }

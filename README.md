@@ -26,7 +26,8 @@ opencode-onprem-patch/
 │   ├── parsers-config-onprem.patch                # Tree-sitter离线支持
 │   └── plugins-onprem.patch                      # 插件离线支持
 ├── src/
-│   ├── onprem-plugins.json       # 插件配置模板
+│   ├── onprem-index.ts         # Onprem模块源码
+│   ├── onprem-plugins.json      # 插件配置模板
 │   └── onprem-plugins.schema.json # 配置Schema
 └── scripts/
     ├── download-onprem-deps.ts    # 预下载依赖脚本
@@ -53,6 +54,7 @@ git apply /path/to/opencode-onprem-patch/patches/0001-add-onprem-module-and-scri
 git apply /path/to/opencode-onprem-patch/patches/0002-modify-source-files.patch
 git apply /path/to/opencode-onprem-patch/patches/lsp-server-onprem.patch
 git apply /path/to/opencode-onprem-patch/patches/parsers-config-onprem.patch
+git apply /path/to/opencode-onprem-patch/patches/plugins-onprem.patch
 ```
 
 ### 2. 预下载依赖
@@ -70,10 +72,15 @@ bun run script/download-onprem-deps.ts
 - `RUST_ANALYZER_MIRROR_URL` - rust-analyzer 镜像地址
 - `SKIP_WEB_APP_BUILD=true` - 跳过 Web App 构建
 
+仅下载插件（测试用）：
+```bash
+bun run script/download-onprem-deps.ts --plugins-only
+```
+
 ### 3. 打包
 
 ```bash
-OPENCODE_VERSION=1.2.27 bun run script/package-onprem-bundle.ts
+OPENCODE_VERSION=1.3.2 bun run script/package-onprem-bundle.ts
 ```
 
 > **注意：** `OPENCODE_VERSION` 环境变量用于设置编译后的版本号。
@@ -104,10 +111,13 @@ cd opencode-onprem-linux-x64-baseline
 - `packages/opencode/src/onprem/index.ts` - 核心 onprem 模块
 - `script/download-onprem-deps.ts` - 预下载脚本
 - `script/package-onprem-bundle.ts` - 打包脚本
+- `script/onprem-plugins.json` - 插件配置文件
+- `script/onprem-plugins.schema.json` - JSON Schema
 
 ### 0002-modify-source-files.patch
 
 修改文件：
+- `packages/opencode/package.json` - 添加 opentui 依赖
 - `packages/opencode/src/flag/flag.ts` - 添加环境变量
 - `packages/opencode/src/file/ripgrep.ts` - 离线 ripgrep
 - `packages/opencode/src/provider/models.ts` - 离线 models.json
@@ -117,27 +127,24 @@ cd opencode-onprem-linux-x64-baseline
 
 为以下 LSP 添加离线支持：
 
-**Binary LSPs (8个):**
+**Binary LSPs (7个):**
 - clangd, rust-analyzer, zls, lua-language-server
 - terraform-ls, texlab, tinymist
 
-**NPM-based LSPs (6个):**
+**NPM-based LSPs (9个):**
 - typescript-language-server, pyright
 - svelte-language-server, @astrojs/language-server
 - yaml-language-server, dockerfile-language-server-nodejs
+- @vue/language-server, intelephense, bash-language-server
 
 ### parsers-config-onprem.patch
 
-支持 21 种语言的 tree-sitter 解析器离线加载。
+支持 25 种语言的 tree-sitter 解析器离线加载。
 
 ### plugins-onprem.patch
 
-新增和修改文件：
+修改文件：
 - `packages/opencode/src/bun/index.ts` - 在 `BunProc.install()` 开头添加离线插件检测
-- `packages/opencode/src/onprem/index.ts` - 添加 `resolvePlugin()` 和 `pluginExists()` 函数
-- `script/onprem-plugins.json` - 插件配置文件（新增）
-- `script/onprem-plugins.schema.json` - JSON Schema（新增）
-- `script/download-onprem-deps.ts` - 添加插件安装逻辑和 `--plugins-only` 选项
 
 ## 支持的离线组件
 
@@ -163,11 +170,14 @@ cd opencode-onprem-linux-x64-baseline
 | @astrojs/language-server | Astro |
 | yaml-language-server | YAML |
 | dockerfile-language-server-nodejs | Dockerfile |
+| @vue/language-server | Vue |
+| intelephense | PHP |
+| bash-language-server | Bash |
 
 ### Tree-sitter Parsers
 
-21 种语言的语法解析器：
-python, rust, go, cpp, csharp, bash, c, java, ruby, php, scala, html, json, yaml, haskell, css, julia, ocaml, clojure, swift, nix
+25 种语言的语法解析器：
+python, rust, go, cpp, csharp, bash, c, java, kotlin, ruby, php, scala, html, hcl, json, yaml, haskell, css, julia, lua, ocaml, clojure, swift, toml, nix
 
 ## 环境变量
 
@@ -210,11 +220,16 @@ deps/
 │   ├── svelte-language-server/
 │   ├── @astrojs/language-server/
 │   ├── yaml-language-server/
-│   └── dockerfile-language-server-nodejs/
+│   ├── dockerfile-language-server-nodejs/
+│   ├── @vue/language-server/
+│   ├── intelephense/
+│   └── bash-language-server/
 ├── plugins/                         # 离线插件目录(可选)
 │   ├── package.json                # bun install 生成
 │   └── node_modules/
 │       └── opencode-anthropic-auth/ # 示例插件
+├── opentui/                         # OpenTUI 原生库
+│   └── libopentui.so
 ├── models.json                      # 模型元数据
 ├── app/                             # Web UI
 └── manifest.json                    # Bundle 清单
@@ -259,6 +274,3 @@ bun run script/download-onprem-deps.ts --plugins-only
 
 - [WORKFLOW.md](./WORKFLOW.md) - 详细构建指南
 - [manifest.json](./manifest.json) - 修改清单
-
-
-

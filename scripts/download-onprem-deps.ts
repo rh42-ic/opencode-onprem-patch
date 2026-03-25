@@ -17,18 +17,22 @@ const TREE_SITTER_PARSERS = [
   { name: "bash", repo: "tree-sitter/tree-sitter-bash", version: "v0.25.0" },
   { name: "c", repo: "tree-sitter/tree-sitter-c", version: "v0.24.1" },
   { name: "java", repo: "tree-sitter/tree-sitter-java", version: "v0.23.5" },
+  { name: "kotlin", repo: "fwcd/tree-sitter-kotlin", version: "0.3.8" },
   { name: "ruby", repo: "tree-sitter/tree-sitter-ruby", version: "v0.23.1" },
   { name: "php", repo: "tree-sitter/tree-sitter-php", version: "v0.24.2" },
   { name: "scala", repo: "tree-sitter/tree-sitter-scala", version: "v0.24.0" },
   { name: "html", repo: "tree-sitter/tree-sitter-html", version: "v0.23.2" },
+  { name: "hcl", repo: "tree-sitter-grammars/tree-sitter-hcl", version: "v1.2.0" },
   { name: "json", repo: "tree-sitter/tree-sitter-json", version: "v0.24.8" },
   { name: "yaml", repo: "tree-sitter-grammars/tree-sitter-yaml", version: "v0.7.2" },
   { name: "haskell", repo: "tree-sitter/tree-sitter-haskell", version: "v0.23.1" },
   { name: "css", repo: "tree-sitter/tree-sitter-css", version: "v0.25.0" },
   { name: "julia", repo: "tree-sitter/tree-sitter-julia", version: "v0.23.1" },
+  { name: "lua", repo: "tree-sitter-grammars/tree-sitter-lua", version: "v0.5.0" },
   { name: "ocaml", repo: "tree-sitter/tree-sitter-ocaml", version: "v0.24.2" },
   { name: "clojure", repo: "anomalyco/tree-sitter-clojure", version: "v0.0.1" },
   { name: "swift", repo: "alex-pinkus/tree-sitter-swift", version: "0.7.1" },
+  { name: "toml", repo: "tree-sitter-grammars/tree-sitter-toml", version: "v0.7.0" },
   { name: "nix", repo: "ast-grep/ast-grep.github.io", version: "static", wasmPath: "website/public/parsers/tree-sitter-nix.wasm", assetCommit: "40b84530640aa83a0d34a20a2b0623d7b8e5ea97" },
 ]
 
@@ -65,6 +69,10 @@ const TREE_SITTER_QUERIES: Record<string, { highlights: string[]; locals?: strin
     highlights: ["https://raw.githubusercontent.com/nvim-treesitter/nvim-treesitter/refs/heads/master/queries/java/highlights.scm"],
     locals: ["https://raw.githubusercontent.com/nvim-treesitter/nvim-treesitter/refs/heads/master/queries/java/locals.scm"],
   },
+  kotlin: {
+    highlights: ["https://raw.githubusercontent.com/fwcd/tree-sitter-kotlin/0.3.8/queries/highlights.scm"],
+    locals: ["https://raw.githubusercontent.com/nvim-treesitter/nvim-treesitter/master/queries/kotlin/locals.scm"],
+  },
   ruby: {
     highlights: ["https://raw.githubusercontent.com/nvim-treesitter/nvim-treesitter/refs/heads/master/queries/ruby/highlights.scm"],
     locals: ["https://raw.githubusercontent.com/nvim-treesitter/nvim-treesitter/refs/heads/master/queries/ruby/locals.scm"],
@@ -77,6 +85,9 @@ const TREE_SITTER_QUERIES: Record<string, { highlights: string[]; locals?: strin
   },
   html: {
     highlights: ["https://github.com/tree-sitter/tree-sitter-html/raw/refs/heads/master/queries/highlights.scm"],
+  },
+  hcl: {
+    highlights: ["https://raw.githubusercontent.com/nvim-treesitter/nvim-treesitter/master/queries/hcl/highlights.scm"],
   },
   json: {
     highlights: ["https://raw.githubusercontent.com/nvim-treesitter/nvim-treesitter/refs/heads/master/queries/json/highlights.scm"],
@@ -93,6 +104,10 @@ const TREE_SITTER_QUERIES: Record<string, { highlights: string[]; locals?: strin
   julia: {
     highlights: ["https://raw.githubusercontent.com/nvim-treesitter/nvim-treesitter/refs/heads/master/queries/julia/highlights.scm"],
   },
+  lua: {
+    highlights: ["https://raw.githubusercontent.com/tree-sitter-grammars/tree-sitter-lua/v0.5.0/queries/highlights.scm"],
+    locals: ["https://raw.githubusercontent.com/tree-sitter-grammars/tree-sitter-lua/v0.5.0/queries/locals.scm"],
+  },
   ocaml: {
     highlights: ["https://raw.githubusercontent.com/nvim-treesitter/nvim-treesitter/refs/heads/master/queries/ocaml/highlights.scm"],
   },
@@ -102,6 +117,9 @@ const TREE_SITTER_QUERIES: Record<string, { highlights: string[]; locals?: strin
   swift: {
     highlights: ["https://raw.githubusercontent.com/alex-pinkus/tree-sitter-swift/main/queries/highlights.scm"],
     locals: ["https://raw.githubusercontent.com/nvim-treesitter/nvim-treesitter/refs/heads/master/queries/swift/locals.scm"],
+  },
+  toml: {
+    highlights: ["https://raw.githubusercontent.com/nvim-treesitter/nvim-treesitter/master/queries/toml/highlights.scm"],
   },
   nix: {
     highlights: ["https://raw.githubusercontent.com/nvim-treesitter/nvim-treesitter/refs/heads/master/queries/nix/highlights.scm"],
@@ -125,7 +143,83 @@ interface Manifest {
     tinymist?: string
     treeSitterWasm: string[]
     npmPackages: Record<string, string>
+    plugins?: Record<string, string>
   }
+}
+
+interface PluginSpec {
+  name: string
+  version: string
+  raw: string
+}
+
+async function loadPluginsConfig(): Promise<PluginSpec[]> {
+  const configPath = path.join("script", "onprem-plugins.json")
+  const config = await Bun.file(configPath).json().catch(() => ({ plugins: [] }))
+  return parsePluginSpecifiers(config.plugins || [])
+}
+
+function parsePluginSpecifiers(specifiers: string[]): PluginSpec[] {
+  const plugins: PluginSpec[] = []
+
+  for (const spec of specifiers) {
+    if (spec.startsWith("github:")) {
+      const repo = spec.slice(7)
+      plugins.push({ name: repo, version: spec, raw: spec })
+      continue
+    }
+
+    const atIndex = spec.lastIndexOf("@")
+    if (atIndex > 0) {
+      const name = spec.slice(0, atIndex)
+      const version = spec.slice(atIndex + 1)
+      plugins.push({ name, version, raw: spec })
+    } else {
+      plugins.push({ name: spec, version: "latest", raw: spec + "@latest" })
+    }
+  }
+
+  return plugins
+}
+
+async function installPlugins(plugins: PluginSpec[]): Promise<Record<string, string>> {
+  if (plugins.length === 0) {
+    console.log("No plugins configured")
+    return {}
+  }
+
+  console.log(`\n=== Installing ${plugins.length} plugins ===`)
+
+  const pluginsDir = path.join(DEPS_DIR, "plugins")
+  await fs.mkdir(pluginsDir, { recursive: true })
+
+  const pkgJsonPath = path.join(pluginsDir, "package.json")
+  await Bun.write(pkgJsonPath, JSON.stringify({ dependencies: {} }, null, 2))
+
+  const versions: Record<string, string> = {}
+
+  for (const plugin of plugins) {
+    console.log(`Installing ${plugin.raw}...`)
+
+    const proc = Bun.spawn(["bun", "add", "--cwd", pluginsDir, plugin.raw], {
+      stdout: "inherit",
+      stderr: "inherit",
+    })
+    await proc.exited
+
+    if (proc.exitCode !== 0) {
+      console.log(`Failed to install ${plugin.raw}, skipping`)
+      continue
+    }
+
+    const installedPkgJson = await Bun.file(pkgJsonPath).json()
+    if (installedPkgJson.dependencies?.[plugin.name]) {
+      versions[plugin.name] = installedPkgJson.dependencies[plugin.name]
+    }
+  }
+
+  console.log(`Installed ${Object.keys(versions).length} plugins`)
+  return versions
 }
 
 async function downloadFile(url: string, dest: string): Promise<void> {
@@ -585,6 +679,9 @@ async function installNpmPackages(): Promise<Record<string, string>> {
     "@astrojs/language-server",
     "yaml-language-server",
     "dockerfile-language-server-nodejs",
+    "@vue/language-server",
+    "intelephense",
+    "bash-language-server",
   ]
 
   const pkgJsonPath = path.join(DEPS_DIR, "package.json")
@@ -690,8 +787,30 @@ async function createManifest(
 }
 
 async function main() {
+  const args = process.argv.slice(2)
+  const pluginsOnly = args.includes("--plugins-only")
+
   console.log("=== OpenCode Onprem Dependencies Downloader ===")
   console.log(`Target directory: ${DEPS_DIR}`)
+
+  if (pluginsOnly) {
+    const depsExist = await fs.stat(DEPS_DIR).catch(() => null)
+    if (!depsExist) {
+      console.error(`Dependencies not found at ${DEPS_DIR}`)
+      console.error("Run full download first (without --plugins-only)")
+      process.exit(1)
+    }
+
+    const pluginList = await loadPluginsConfig()
+    const pluginVersions = await installPlugins(pluginList)
+    await updatePluginsManifest(pluginVersions)
+
+    console.log("\n=== Plugins download complete ===")
+    if (Object.keys(pluginVersions).length > 0) {
+      console.log(`Plugins saved to: ${DEPS_DIR}/plugins/node_modules/`)
+    }
+    return
+  }
 
   await fs.rm(DEPS_DIR, { recursive: true, force: true })
   await fs.mkdir(DEPS_DIR, { recursive: true })
@@ -700,18 +819,15 @@ async function main() {
   const clangdVersion = await downloadClangd()
   const rustAnalyzerVersion = await downloadRustAnalyzer()
   
-  // Additional LSP servers (optional)
   const zlsVersion = await downloadZls()
   const luaLsVersion = await downloadLuaLanguageServer()
   const terraformLsVersion = await downloadTerraformLs()
   const texlabVersion = await downloadTexlab()
   const tinymistVersion = await downloadTinymist()
   
-  // Tree-sitter
   const treeSitterWasm = await downloadTreeSitterWasm()
   await downloadTreeSitterQueries()
   
-  // npm packages and other deps
   const npmVersions = await installNpmPackages()
   await downloadModelsJson()
   await buildWebApp()
@@ -729,8 +845,50 @@ async function main() {
     npmVersions
   )
 
+  const pluginList = await loadPluginsConfig()
+  const pluginVersions = await installPlugins(pluginList)
+  
+  if (Object.keys(pluginVersions).length > 0) {
+    const manifestPath = path.join(DEPS_DIR, "manifest.json")
+    const manifest = await Bun.file(manifestPath).json()
+    manifest.components.plugins = pluginVersions
+    await Bun.write(manifestPath, JSON.stringify(manifest, null, 2))
+  }
+
   console.log("\n=== Download complete ===")
   console.log(`Dependencies saved to: ${DEPS_DIR}`)
+}
+
+async function updatePluginsManifest(pluginVersions: Record<string, string>): Promise<void> {
+  console.log("\n=== Updating manifest ===")
+
+  const manifestPath = path.join(DEPS_DIR, "manifest.json")
+  let manifest: Manifest
+
+  const existing = await Bun.file(manifestPath).json().catch(() => null)
+  if (existing) {
+    manifest = existing
+    manifest.created = new Date().toISOString()
+  } else {
+    manifest = {
+      version: "1.0.0",
+      created: new Date().toISOString(),
+      platform: "linux",
+      arch: "x64",
+      components: {
+        ripgrep: "",
+        clangd: "",
+        rustAnalyzer: "",
+        treeSitterWasm: [],
+        npmPackages: {},
+      },
+    }
+  }
+
+  manifest.components.plugins = Object.keys(pluginVersions).length > 0 ? pluginVersions : undefined
+
+  await Bun.write(manifestPath, JSON.stringify(manifest, null, 2))
+  console.log("Manifest updated with plugins")
 }
 
 main().catch((err) => {

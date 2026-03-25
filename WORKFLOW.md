@@ -23,6 +23,7 @@ git apply /path/to/opencode-onprem-patch/patches/0001-add-onprem-module-and-scri
 git apply /path/to/opencode-onprem-patch/patches/0002-modify-source-files.patch
 git apply /path/to/opencode-onprem-patch/patches/lsp-server-onprem.patch
 git apply /path/to/opencode-onprem-patch/patches/parsers-config-onprem.patch
+git apply /path/to/opencode-onprem-patch/patches/plugins-onprem.patch
 
 # 4. 如果有冲突
 # 查看 .rej 文件，手动合并
@@ -45,15 +46,18 @@ git apply /path/to/opencode-onprem-patch/patches/parsers-config-onprem.patch
 | `packages/opencode/src/onprem/index.ts` | 核心 onprem 模块，提供离线资源解析功能 |
 | `script/download-onprem-deps.ts` | 预下载依赖脚本 |
 | `script/package-onprem-bundle.ts` | 打包脚本 |
+| `script/onprem-plugins.json` | 插件配置文件 |
+| `script/onprem-plugins.schema.json` | JSON Schema |
 
 ### 0002-modify-source-files.patch
 
 修改文件：
 | 文件路径 | 修改内容 |
 |----------|----------|
+| `packages/opencode/package.json` | 添加 opentui 依赖 |
 | `packages/opencode/src/flag/flag.ts` | 添加 `OPENCODE_ONPREM_MODE` 和 `OPENCODE_ONPREM_DEPS_PATH` 标志 |
 | `packages/opencode/src/file/ripgrep.ts` | 添加离线 ripgrep 路径检查 |
-| `packages/opencode/src/provider/models.ts` | 添加从 deps/models.json 加载模型数据，含双重回退和日志 |
+| `packages/opencode/src/provider/models.ts` | 添加从 deps/models.json 加载模型数据 |
 | `packages/opencode/src/server/server.ts` | 添加 Web UI 静态文件服务 |
 
 ### lsp-server-onprem.patch
@@ -76,10 +80,20 @@ git apply /path/to/opencode-onprem-patch/patches/parsers-config-onprem.patch
 - @astrojs/language-server
 - yaml-language-server
 - dockerfile-language-server-nodejs
+- @vue/language-server
+- intelephense (PHP)
+- bash-language-server
 
 ### parsers-config-onprem.patch
 
 修改 `packages/opencode/parsers-config.ts`，支持从本地 deps 目录加载 tree-sitter WASM 和查询文件。
+
+支持 25 种语言：
+python, rust, go, cpp, csharp, bash, c, java, kotlin, ruby, php, scala, html, hcl, json, yaml, haskell, css, julia, lua, ocaml, clojure, swift, toml, nix
+
+### plugins-onprem.patch
+
+修改 `packages/opencode/src/bun/index.ts`，在 `BunProc.install()` 添加离线插件检测。
 
 ## 搜索标记
 
@@ -170,46 +184,11 @@ export const Data = lazy(async () => {
 })
 ```
 
-3. 修改 `get()` 函数开头，添加更好的错误日志：
-```typescript
-export async function get() {
-  // onprem-fork: in onprem mode, try bundled models from deps first
-  if (Onprem.isEnabled()) {
-    const depsPath = Onprem.getDepsPath()
-    if (depsPath) {
-      const modelsPath = path.join(depsPath, "models.json")
-      const offlineResult = await Filesystem.readJson(modelsPath).catch((e) => {
-        log.warn("failed to read onprem models.json", { path: modelsPath, error: String(e) })
-        return undefined
-      })
-      if (offlineResult) return offlineResult as Record<string, Provider>
-    }
-  }
-
-  const result = await Data()
-  return result as Record<string, Provider>
-}
-```
-
-4. 修改 refresh 逻辑跳过 onprem 模式：
-```typescript
-// onprem-fork: skip models refresh in onprem mode
-if (!Onprem.isEnabled() && !Flag.OPENCODE_DISABLE_MODELS_FETCH && !process.argv.includes("--get-yargs-completions")) {
-  ModelsDev.refresh()
-  // ...
-}
-```
-
 **模型加载优先级（onprem 模式）：**
 1. 缓存文件 (`~/.cache/opencode/models.json` 或 `OPENCODE_MODELS_PATH`)
 2. onprem deps 目录 (`OPENCODE_ONPREM_DEPS_PATH/models.json`)
 3. 内置快照 (`models-snapshot.ts`)
 4. 网络获取（如果 `OPENCODE_DISABLE_MODELS_FETCH` 未设置）
-
-**日志输出：**
-- 成功从 onprem deps 加载：`log.info("loaded models from onprem deps", { path: depsPath })`
-- deps 目录存在但 models.json 不存在：`log.warn("onprem enabled but deps models.json not found", { path: depsPath })`
-- 读取 models.json 失败：`log.warn("failed to read onprem models.json", { path: modelsPath, error: String(e) })`
 
 ### server/server.ts
 
@@ -303,12 +282,12 @@ bun run script/download-onprem-deps.ts --plugins-only
 ### 3. 打包离线 bundle
 
 ```bash
-OPENCODE_VERSION=1.2.27 bun run script/package-onprem-bundle.ts
+OPENCODE_VERSION=1.3.2 bun run script/package-onprem-bundle.ts
 ```
 
 > **注意：** `OPENCODE_VERSION` 环境变量用于设置编译后的版本号。
 
-### 3. 在离线机器上部署
+### 4. 在离线机器上部署
 
 ```bash
 # 标准版本（需要 AVX2）
@@ -330,11 +309,11 @@ git add -A
 git commit -m "onprem modifications for version x.x.x"
 
 # 生成新 patch
-git diff HEAD~1 HEAD -- packages/opencode/src/onprem/index.ts script/ > patches/0001-add-onprem-module-and-scripts.patch
-git diff HEAD~1 HEAD -- packages/opencode/src/flag/flag.ts packages/opencode/src/file/ripgrep.ts packages/opencode/src/provider/models.ts packages/opencode/src/server/server.ts packages/opencode/src/installation/index.ts > patches/0002-modify-source-files.patch
+git diff HEAD~1 HEAD -- script/download-onprem-deps.ts script/package-onprem-bundle.ts packages/opencode/src/onprem/index.ts script/onprem-plugins.json script/onprem-plugins.schema.json > patches/0001-add-onprem-module-and-scripts.patch
+git diff HEAD~1 HEAD -- packages/opencode/src/flag/flag.ts packages/opencode/src/file/ripgrep.ts packages/opencode/src/provider/models.ts packages/opencode/src/server/server.ts packages/opencode/package.json > patches/0002-modify-source-files.patch
 git diff HEAD~1 HEAD -- packages/opencode/src/lsp/server.ts > patches/lsp-server-onprem.patch
 git diff HEAD~1 HEAD -- packages/opencode/parsers-config.ts > patches/parsers-config-onprem.patch
-git diff HEAD~1 HEAD -- packages/opencode/src/bun/index.ts packages/opencode/src/onprem/index.ts script/download-onprem-deps.ts script/onprem-plugins.json script/onprem-plugins.schema.json > patches/plugins-onprem.patch
+git diff HEAD~1 HEAD -- packages/opencode/src/bun/index.ts > patches/plugins-onprem.patch
 ```
 
 ## 预下载资源清单
@@ -363,13 +342,16 @@ git diff HEAD~1 HEAD -- packages/opencode/src/bun/index.ts packages/opencode/src
 | Astro LSP | `deps/node_modules/@astrojs/language-server/` |
 | YAML LSP | `deps/node_modules/yaml-language-server/` |
 | Dockerfile LSP | `deps/node_modules/dockerfile-language-server-nodejs/` |
+| Vue LSP | `deps/node_modules/@vue/language-server/` |
+| Intelephense (PHP) | `deps/node_modules/intelephense/` |
+| Bash LSP | `deps/node_modules/bash-language-server/` |
 
 ### Tree-sitter Parsers (WASM)
 
-支持 21 种语言的 tree-sitter 解析器：
-- python, rust, go, cpp, csharp, bash, c, java, ruby, php
-- scala, html, json, yaml, haskell, css, julia, ocaml
-- clojure, swift, nix
+支持 25 种语言的 tree-sitter 解析器：
+- python, rust, go, cpp, csharp, bash, c, java, kotlin, ruby, php
+- scala, html, hcl, json, yaml, haskell, css, julia, lua, ocaml
+- clojure, swift, toml, nix
 
 存放路径：`deps/tree-sitter/wasm/`
 
@@ -384,6 +366,7 @@ git diff HEAD~1 HEAD -- packages/opencode/src/bun/index.ts packages/opencode/src
 |------|----------|
 | models.json | `deps/models.json` |
 | Web App | `deps/app/` |
+| OpenTUI | `deps/opentui/libopentui.so` |
 
 ### 离线插件
 

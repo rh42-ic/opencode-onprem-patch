@@ -1,3 +1,18 @@
+diff --git a/packages/opencode/package.json b/packages/opencode/package.json
+index 05fb389..a8b6084 100644
+--- a/packages/opencode/package.json
++++ b/packages/opencode/package.json
+@@ -133,9 +133,9 @@
+     "minimatch": "10.0.3",
+     "open": "10.1.2",
+     "opencode-gitlab-auth": "2.0.0",
++    "opencode-poe-auth": "0.0.1",
+     "opentui-spinner": "0.0.6",
+     "partial-json": "0.1.7",
+-    "opencode-poe-auth": "0.0.1",
+     "remeda": "catalog:",
+     "semver": "^7.6.3",
+     "solid-js": "catalog:",
 diff --git a/packages/opencode/src/file/ripgrep.ts b/packages/opencode/src/file/ripgrep.ts
 index 601c82e..ee0029c 100644
 --- a/packages/opencode/src/file/ripgrep.ts
@@ -32,13 +47,13 @@ index 601c82e..ee0029c 100644
  
      if (!(await Filesystem.exists(filepath))) {
 diff --git a/packages/opencode/src/flag/flag.ts b/packages/opencode/src/flag/flag.ts
-index f1688a1..9641867 100644
+index 0c55187..54f8875 100644
 --- a/packages/opencode/src/flag/flag.ts
 +++ b/packages/opencode/src/flag/flag.ts
-@@ -65,6 +65,10 @@ export namespace Flag {
+@@ -75,6 +75,10 @@ export namespace Flag {
    export const OPENCODE_SKIP_MIGRATIONS = truthy("OPENCODE_SKIP_MIGRATIONS")
    export const OPENCODE_STRICT_CONFIG_DEPS = truthy("OPENCODE_STRICT_CONFIG_DEPS")
-
+ 
 +  // onprem-fork: onprem mode flags
 +  export const OPENCODE_ONPREM_MODE = truthy("OPENCODE_ONPREM_MODE")
 +  export const OPENCODE_ONPREM_DEPS_PATH = process.env["OPENCODE_ONPREM_DEPS_PATH"]
@@ -108,10 +123,10 @@ index bae3317..8c0d9f4 100644
    setInterval(
      async () => {
 diff --git a/packages/opencode/src/server/server.ts b/packages/opencode/src/server/server.ts
-index 55bcf2d..d107fbe 100644
+index 7ead4df..0ac5018 100644
 --- a/packages/opencode/src/server/server.ts
 +++ b/packages/opencode/src/server/server.ts
-@@ -45,6 +45,7 @@ import { PermissionRoutes } from "./routes/permission"
+@@ -43,6 +43,7 @@ import { PermissionRoutes } from "./routes/permission"
  import { GlobalRoutes } from "./routes/global"
  import { MDNS } from "./mdns"
  import { lazy } from "@/util/lazy"
@@ -119,7 +134,7 @@ index 55bcf2d..d107fbe 100644
  
  // @ts-ignore This global is needed to prevent ai-sdk from logging warnings to stdout https://github.com/vercel/ai/blob/2dc67e0ef538307f21368db32d5a12345d98831b/packages/ai/src/logger/log-warnings.ts#L85
  globalThis.AI_SDK_LOG_WARNINGS = false
-@@ -555,6 +556,12 @@ export namespace Server {
+@@ -497,6 +498,12 @@ export namespace Server {
          },
        )
        .all("/*", async (c) => {

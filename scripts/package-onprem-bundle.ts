@@ -128,7 +128,7 @@ async function createReadme(variant: BuildVariant): Promise<void> {
     ? "\nThis is the **baseline** version for CPUs without AVX2 support.\n"
     : ""
 
-  const readme = `# OpenCode Onprem Bundle
+const readme = `# OpenCode Onprem Bundle
 
 This is a self-contained onprem bundle of OpenCode for Linux x64.
 ${variantNote}
@@ -138,8 +138,20 @@ ${variantNote}
 - \`deps/\` - Pre-bundled dependencies
   - \`ripgrep/\` - Ripgrep binary for fast file searching
   - \`lsp/\` - Language server binaries
-  - \`node_modules/\` - npm packages (pyright, typescript-language-server, etc.)
-  - \`tree-sitter/\` - Tree-sitter parsers
+    - \`clangd/\` - C/C++ language server
+    - \`rust-analyzer/\` - Rust language server
+    - \`zls/\` - Zig language server
+    - \`lua-language-server/\` - Lua language server
+    - \`terraform-ls/\` - Terraform language server
+    - \`texlab/\` - LaTeX language server
+    - \`tinymist/\` - Typst language server
+  - \`node_modules/\` - npm packages for language servers
+  - \`tree-sitter/\` - Tree-sitter parsers for syntax highlighting
+    - \`wasm/\` - WASM parser files
+    - \`queries/\` - Query files for highlights/locals
+  - \`plugins/\` - Pre-installed plugins (optional)
+    - \`package.json\`
+    - \`node_modules/\`
   - \`app/\` - Pre-built web UI
   - \`models.json\` - Model metadata
   - \`opentui/\` - OpenTUI native library
@@ -172,25 +184,66 @@ export OPENCODE_ONPREM_DEPS_PATH=/path/to/deps
 
 ## Supported Languages
 
-This bundle includes LSP support for:
-- **Python** - via Pyright
-- **TypeScript/JavaScript** - via typescript-language-server
-- **C/C++** - via clangd
-- **Rust** - via rust-analyzer
-- **Zig** - via zls
-- **Lua** - via lua-language-server
-- **Terraform** - via terraform-ls
-- **LaTeX** - via texlab
-- **Typst** - via tinymist
-- And more...
+### Pre-bundled LSP (work offline)
+
+These language servers are included and work without network access:
+
+| Language | LSP |
+|----------|-----|
+| Python | Pyright |
+| TypeScript/JavaScript | typescript-language-server |
+| Vue | @vue/language-server |
+| Svelte | svelte-language-server |
+| Astro | @astrojs/language-server |
+| PHP | intelephense |
+| Bash | bash-language-server |
+| YAML | yaml-language-server |
+| Dockerfile | dockerfile-language-server-nodejs |
+| C/C++ | clangd |
+| Rust | rust-analyzer |
+| Zig | zls |
+| Lua | lua-language-server |
+| Terraform/HCL | terraform-ls |
+| LaTeX | texlab |
+| Typst | tinymist |
+
+### Requires language runtime
+
+These LSPs require their respective language runtimes to be installed on the system:
+
+| Language | LSP | Runtime Required |
+|----------|-----|------------------|
+| Go | gopls | Go |
+| Java | jdtls | Java 21+ |
+| Ruby | ruby-lsp/rubocop | Ruby |
+| Elixir | elixir-ls | Elixir + mix |
+| C# | csharp-ls | .NET SDK |
+| F# | fsautocomplete | .NET SDK |
+| Kotlin | kotlin-lsp | Kotlin |
+| Dart | dart | Dart SDK |
+| OCaml | ocamllsp | opam |
+| Haskell | haskell-language-server | GHCup |
+| Gleam | gleam | Gleam |
+| Clojure | clojure-lsp | Clojure |
+| Nix | nixd | Nix |
+
+## Tree-sitter Parsers
+
+This bundle includes tree-sitter WASM parsers for syntax highlighting:
+
+\`\`\`
+python, rust, go, cpp, csharp, bash, c, java, kotlin, ruby,php, scala, html, hcl, json, yaml, haskell, css, julia, lua,ocaml, clojure, swift, toml, nix
+\`\`\`
 
 ## Environment Variables
 
-- \`OPENCODE_ONPREM_MODE\` - Set to \`true\` to enable onprem mode
-- \`OPENCODE_ONPREM_DEPS_PATH\` - Path to the deps directory
-- \`OPENCODE_DISABLE_AUTOUPDATE\` - Set to \`true\` to disable auto-updates
-- \`OPENCODE_DISABLE_LSP_DOWNLOAD\` - Set to \`true\` to prevent LSP downloads
-- \`OPENCODE_DISABLE_MODELS_FETCH\` - Set to \`true\` to prevent fetching models from models.dev
+| Variable | Description |
+|----------|-------------|
+| \`OPENCODE_ONPREM_MODE\` | Set to \`true\` to enable onprem mode |
+| \`OPENCODE_ONPREM_DEPS_PATH\` | Path to the deps directory |
+| \`OPENCODE_DISABLE_AUTOUPDATE\` | Set to \`true\` to disable auto-updates |
+| \`OPENCODE_DISABLE_LSP_DOWNLOAD\` | Set to \`true\` to prevent LSP downloads |
+| \`OPENCODE_DISABLE_MODELS_FETCH\` | Set to \`true\` to prevent fetching models from models.dev |
 
 ## Troubleshooting
 
@@ -199,6 +252,15 @@ This bundle includes a pre-extracted OpenTUI native library in \`deps/opentui/\`
 When \`OPENCODE_ONPREM_DEPS_PATH\` is set (done automatically by the wrapper script),
 the application will load this library directly, bypassing the /tmp extraction
 that would otherwise fail on systems with noexec /tmp.
+
+### Language server not found
+Ensure the deps directory contains the required language server:
+- Binary LSPs should be in \`deps/lsp/<name>/\`
+- npm-based LSPs should be in \`deps/node_modules/<package>/\`
+
+### Missing tree-sitter parser
+Tree-sitter WASM files should be in \`deps/tree-sitter/wasm/\`.
+Query files should be in \`deps/tree-sitter/queries/<language>/\`.
 `
 
   await Bun.write(path.join(BUNDLE_DIR, "README.md"), readme)
@@ -215,7 +277,7 @@ async function createTarball(variant: BuildVariant): Promise<void> {
   await fs.unlink(tarballPath).catch(() => {})
 
   const proc = Bun.spawn(
-    ["tar", "-I", "zstd -15 -T0", "-cf", TARBALL_NAME, BUNDLE_DIR],
+    ["tar", "--zstd", "-cf", TARBALL_NAME, BUNDLE_DIR],
     {
       cwd: "dist",
       stdout: "inherit",

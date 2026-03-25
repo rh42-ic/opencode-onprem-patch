@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Onprem Plugins Configuration",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "plugins": {
+      "type": "array",
+      "description": "List of npm packages to install for offline plugin support",
+      "items": {
+        "type": "string",
+        "description": "npm package specifier. Supports:\n- npm packages: package, package@version, package@latest\n- scoped packages: @scope/package, @scope/package@version\n- git URLs: package@git+https://..., package@git+ssh://...\n- GitHub shorthand: github:user/repo, package@github:user/repo",
+        "pattern": "^(github:[A-Za-z0-9_-]+/[A-Za-z0-9._-]+|(@[a-z0-9-~][a-z0-9-._~]*/)?[a-z0-9-~][a-z0-9-._~]*(@([a-zA-Z0-9.~_-]+|latest|git\\+https?://[^\\s]+|git\\+ssh://[^\\s]+|github:[A-Za-z0-9_-]+/[A-Za-z0-9._-]+))?)?)$"
+      }
+    }
+  },
+  "required": ["plugins"],
+  "additionalProperties": false
+}
