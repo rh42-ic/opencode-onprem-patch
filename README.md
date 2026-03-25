@@ -6,10 +6,16 @@
 
 本目录包含将 opencode 原版修改为 onprem 版本所需的 **git patch 文件**、脚本和文档。
 
+如果patch失败，描述性文档应该足够AI Coding Agent解决冲突。你可以一开始就：
+
+```
+阅读 @/path/to/opencode-onprem-patch 说明，对 @/path/to/opencode-1.x.xx 进行patch，如果发生冲突则指定解决方案。
+```
+
 ## 目录结构
 
 ```
-opencode-onprem/
+opencode-onprem-patch/
 ├── manifest.json           # 修改清单
 ├── WORKFLOW.md             # 详细构建指南
 ├── README.md               # 本文件
@@ -17,7 +23,11 @@ opencode-onprem/
 │   ├── 0001-add-onprem-module-and-scripts.patch  # 新增文件
 │   ├── 0002-modify-source-files.patch            # 源码修改（基础）
 │   ├── lsp-server-onprem.patch                   # LSP服务器离线支持
-│   └── parsers-config-onprem.patch                # Tree-sitter离线支持
+│   ├── parsers-config-onprem.patch                # Tree-sitter离线支持
+│   └── plugins-onprem.patch                      # 插件离线支持
+├── src/
+│   ├── onprem-plugins.json       # 插件配置模板
+│   └── onprem-plugins.schema.json # 配置Schema
 └── scripts/
     ├── download-onprem-deps.ts    # 预下载依赖脚本
     ├── package-onprem-bundle.ts   # 打包脚本
@@ -35,14 +45,14 @@ git clone https://github.com/anomalyco/opencode.git opencode-new
 cd opencode-new
 
 # 方法一：使用脚本自动应用（推荐）
-/path/to/opencode-onprem/scripts/apply-patches.sh .
+/path/to/opencode-onprem-patch/scripts/apply-patches.sh .
 
 # 方法二：手动应用 git patch
 git init && git add -A && git commit -m "init"
-git apply /path/to/opencode-onprem/patches/0001-add-onprem-module-and-scripts.patch
-git apply /path/to/opencode-onprem/patches/0002-modify-source-files.patch
-git apply /path/to/opencode-onprem/patches/lsp-server-onprem.patch
-git apply /path/to/opencode-onprem/patches/parsers-config-onprem.patch
+git apply /path/to/opencode-onprem-patch/patches/0001-add-onprem-module-and-scripts.patch
+git apply /path/to/opencode-onprem-patch/patches/0002-modify-source-files.patch
+git apply /path/to/opencode-onprem-patch/patches/lsp-server-onprem.patch
+git apply /path/to/opencode-onprem-patch/patches/parsers-config-onprem.patch
 ```
 
 ### 2. 预下载依赖
@@ -120,6 +130,15 @@ cd opencode-onprem-linux-x64-baseline
 
 支持 21 种语言的 tree-sitter 解析器离线加载。
 
+### plugins-onprem.patch
+
+新增和修改文件：
+- `packages/opencode/src/bun/index.ts` - 在 `BunProc.install()` 开头添加离线插件检测
+- `packages/opencode/src/onprem/index.ts` - 添加 `resolvePlugin()` 和 `pluginExists()` 函数
+- `script/onprem-plugins.json` - 插件配置文件（新增）
+- `script/onprem-plugins.schema.json` - JSON Schema（新增）
+- `script/download-onprem-deps.ts` - 添加插件安装逻辑和 `--plugins-only` 选项
+
 ## 支持的离线组件
 
 ### Binary LSPs
@@ -192,52 +211,54 @@ deps/
 │   ├── @astrojs/language-server/
 │   ├── yaml-language-server/
 │   └── dockerfile-language-server-nodejs/
+├── plugins/                         # 离线插件目录(可选)
+│   ├── package.json                # bun install 生成
+│   └── node_modules/
+│       └── opencode-anthropic-auth/ # 示例插件
 ├── models.json                      # 模型元数据
 ├── app/                             # Web UI
 └── manifest.json                    # Bundle 清单
 ```
 
-## 与 opencode-offline 的区别
+## 插件离线化配置
 
-| 特性 | opencode-offline | opencode-onprem |
-|------|------------------|-----------------|
-| 环境变量 | `OPENCODE_OFFLINE_*` | `OPENCODE_ONPREM_*` |
-| 补丁格式 | 手动修改 | git patch 文件 |
-| LSP 支持 | 5个核心 LSP | 15个 LSP |
-| Tree-sitter | 无 | 21种语言 |
-| 目标用户 | 完全离线环境 | 内网有镜像源的环境 |
+在下载依赖前，可以编辑 `script/onprem-plugins.json` 配置需要离线化的插件：
 
-## 版本升级流程
+```json
+{
+  "$schema": "./onprem-plugins.schema.json",
+  "plugins": [
+    "opencode-anthropic-auth@0.0.13",
+    "superpowers@git+https://github.com/obra/superpowers.git",
+    "@tarquinen/opencode-dcp@latest",
+    "opencode-supermemory@latest",
+    "github:JRedeker/opencode-morph-fast-apply"
+  ]
+}
+```
 
-当 opencode 发布新版本时：
+配置格式：
+- `package@version` - 指定版本的 npm 包
+- `package@latest` - 最新版本的 npm 包
+- `@scope/package@version` - 作用域包
+- `package@git+https://...` - Git 仓库源
+- `package@git+ssh://...` - Git SSH 源
+- `github:user/repo` - GitHub 简写格式
+
+### 仅下载插件（测试用）
 
 ```bash
-# 1. 下载新版本
-git clone https://github.com/anomalyco/opencode.git opencode-new-ver
-
-# 2. 尝试应用补丁
-cd opencode-new-ver
-git init && git add -A && git commit -m "init"
-git apply /path/to/opencode-onprem/patches/0001-add-onprem-module-and-scripts.patch
-git apply /path/to/opencode-onprem/patches/0002-modify-source-files.patch
-git apply /path/to/opencode-onprem/patches/lsp-server-onprem.patch
-git apply /path/to/opencode-onprem/patches/parsers-config-onprem.patch
-
-# 3. 如果有冲突，手动解决
-# 搜索 "// onprem-fork:" 标记确认修改位置
-
-# 4. 测试构建
-bun install
-bun run script/download-onprem-deps.ts
-OPENCODE_VERSION=x.x.x bun run script/package-onprem-bundle.ts
-
-# 5. 更新 patch 文件（如果有修改）
-git add -A && git commit -m "onprem modifications"
-git diff HEAD~1 HEAD -- packages/opencode/src/onprem/ script/ > patches/0001-add-onprem-module-and-scripts.patch
-# ... 其他patch文件
+bun run script/download-onprem-deps.ts --plugins-only
 ```
+
+运行完整下载时会自动安装配置的插件到 `deps/plugins/node_modules/` 目录。
+
+在 onprem 模式下，`BunProc.install()` 会优先检查离线插件目录，如果找到则直接使用离线版本。
 
 ## 参考文档
 
 - [WORKFLOW.md](./WORKFLOW.md) - 详细构建指南
 - [manifest.json](./manifest.json) - 修改清单
+
+
+

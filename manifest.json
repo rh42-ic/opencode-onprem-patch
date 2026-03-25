@@ -57,11 +57,30 @@
       "patch": "lsp-server-onprem.patch"
     },
     {
-      "file": "packages/opencode/parsers-config.ts",
+  "file": "packages/opencode/parsers-config.ts",
       "action": "modify",
       "description": "Support loading tree-sitter parsers from local deps in onprem mode",
       "search_marker": "// onprem-fork:",
       "patch": "parsers-config-onprem.patch"
+    },
+    {
+      "file": "packages/opencode/src/bun/index.ts",
+      "action": "modify",
+      "description": "Add offline plugin detection in BunProc.install()",
+      "search_marker": "// onprem-fork:",
+      "patch": "plugins-onprem.patch"
+    },
+    {
+         "file": "script/onprem-plugins.json",
+      "action": "create",
+      "description": "Configuration file specifying plugins to offline, supports npm packages and git URLs",
+      "patch": "plugins-onprem.patch"
+    },
+    {
+      "file": "script/onprem-plugins.schema.json",
+      "action": "create",
+      "description": "JSON Schema for onprem-plugins.json",
+      "patch": "plugins-onprem.patch"
     }
   ],
   "scripts": [
@@ -103,6 +122,9 @@
     "node_modules/@astrojs/language-server/": "Astro Language Server npm package",
     "node_modules/yaml-language-server/": "YAML Language Server npm package",
     "node_modules/dockerfile-language-server-nodejs/": "Dockerfile Language Server npm package",
+    "plugins/node_modules/": "Offline plugins (configured via onprem-plugins.json, supports npm and git sources)",
+    "plugins/package.json": "Bun-generated package.json with installed plugin versions",
+    "manifest.json": "Bundle manifest including plugin versions in 'plugins' field",
     "models.json": "Model metadata from models.dev",
     "app/": "Pre-built Web UI",
     "opentui/libopentui.so": "OpenTUI native library"

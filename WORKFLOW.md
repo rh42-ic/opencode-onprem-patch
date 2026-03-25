@@ -19,10 +19,10 @@ cd opencode-new
 git init && git add -A && git commit -m "init"
 
 # 3. 应用补丁
-git apply /path/to/opencode-onprem/patches/0001-add-onprem-module-and-scripts.patch
-git apply /path/to/opencode-onprem/patches/0002-modify-source-files.patch
-git apply /path/to/opencode-onprem/patches/lsp-server-onprem.patch
-git apply /path/to/opencode-onprem/patches/parsers-config-onprem.patch
+git apply /path/to/opencode-onprem-patch/patches/0001-add-onprem-module-and-scripts.patch
+git apply /path/to/opencode-onprem-patch/patches/0002-modify-source-files.patch
+git apply /path/to/opencode-onprem-patch/patches/lsp-server-onprem.patch
+git apply /path/to/opencode-onprem-patch/patches/parsers-config-onprem.patch
 
 # 4. 如果有冲突
 # 查看 .rej 文件，手动合并
@@ -32,7 +32,7 @@ git apply /path/to/opencode-onprem/patches/parsers-config-onprem.patch
 ### 或使用脚本
 
 ```bash
-/path/to/opencode-onprem/scripts/apply-patches.sh /path/to/opencode-new
+/path/to/opencode-onprem-patch/scripts/apply-patches.sh /path/to/opencode-new
 ```
 
 ## Patch 文件说明
@@ -112,6 +112,8 @@ export const OPENCODE_ONPREM_DEPS_PATH = process.env["OPENCODE_ONPREM_DEPS_PATH"
 - `resolveParserQuery()` - 解析 tree-sitter 查询文件路径
 - `parserWasmExists()` - 检查 WASM 文件是否存在
 - `parserQueryExists()` - 检查查询文件是否存在
+- `resolvePlugin()` - 解析离线插件路径
+- `pluginExists()` - 检查离线插件是否存在
 - `tryServeStaticFile()` - 尝试提供静态文件
 
 ### ripgrep.ts
@@ -234,9 +236,53 @@ import { Onprem } from "../onprem"
 
 2. 在每个 LSP 的 spawn() 函数中添加离线路径检查（参考 patch 文件）。
 
+### bun/index.ts
+
+1. 添加导入：
+```typescript
+import { Onprem } from "../onprem"
+```
+
+2. 在 `BunProc.install()` 函数开头添加离线插件检测：
+```typescript
+// onprem-fork: check offline plugins directory first
+if (Onprem.isEnabled()) {
+  const pluginPath = Onprem.resolvePlugin(pkg)
+  if (pluginPath && await Onprem.pluginExists(pkg)) {
+    log.info("using onprem plugin", { pkg, path: pluginPath })
+    return pluginPath
+  }
+}
+```
+
 ## 构建流程
 
-### 1. 在联网机器上预下载依赖
+### 1. 配置离线插件（可选）
+
+编辑 `script/onprem-plugins.json` 配置需要离线化的插件：
+
+```json
+{
+  "$schema": "./onprem-plugins.schema.json",
+  "plugins": [
+    "opencode-anthropic-auth@0.0.13",
+    "superpowers@git+https://github.com/obra/superpowers.git",
+    "@tarquinen/opencode-dcp@latest",
+    "opencode-supermemory@latest",
+    "github:JRedeker/opencode-morph-fast-apply"
+  ]
+}
+```
+
+配置格式：
+- `package@version` - 指定版本的 npm 包
+- `package@latest` - 最新版本的 npm 包
+- `@scope/package@version` - 作用域包
+- `package@git+https://...` - Git 仓库源
+- `package@git+ssh://...` - Git SSH 源
+- `github:user/repo` - GitHub 简写格式
+
+### 2. 在联网机器上预下载依赖
 
 ```bash
 cd opencode
@@ -249,7 +295,12 @@ bun run script/download-onprem-deps.ts
 - `RUST_ANALYZER_MIRROR_URL` - rust-analyzer 镜像源
 - `SKIP_WEB_APP_BUILD=true` - 跳过 Web App 构建
 
-### 2. 打包离线 bundle
+仅测试插件下载：
+```bash
+bun run script/download-onprem-deps.ts --plugins-only
+```
+
+### 3. 打包离线 bundle
 
 ```bash
 OPENCODE_VERSION=1.2.27 bun run script/package-onprem-bundle.ts
@@ -283,6 +334,7 @@ git diff HEAD~1 HEAD -- packages/opencode/src/onprem/index.ts script/ > patches/
 git diff HEAD~1 HEAD -- packages/opencode/src/flag/flag.ts packages/opencode/src/file/ripgrep.ts packages/opencode/src/provider/models.ts packages/opencode/src/server/server.ts packages/opencode/src/installation/index.ts > patches/0002-modify-source-files.patch
 git diff HEAD~1 HEAD -- packages/opencode/src/lsp/server.ts > patches/lsp-server-onprem.patch
 git diff HEAD~1 HEAD -- packages/opencode/parsers-config.ts > patches/parsers-config-onprem.patch
+git diff HEAD~1 HEAD -- packages/opencode/src/bun/index.ts packages/opencode/src/onprem/index.ts script/download-onprem-deps.ts script/onprem-plugins.json script/onprem-plugins.schema.json > patches/plugins-onprem.patch
 ```
 
 ## 预下载资源清单
@@ -332,6 +384,16 @@ git diff HEAD~1 HEAD -- packages/opencode/parsers-config.ts > patches/parsers-co
 |------|----------|
 | models.json | `deps/models.json` |
 | Web App | `deps/app/` |
+
+### 离线插件
+
+通过 `script/onprem-plugins.json` 配置，支持：
+- npm 包（如 `opencode-anthropic-auth@0.0.13`）
+- Git 仓库（如 `superpowers@git+https://github.com/obra/superpowers.git`）
+
+存放路径：`deps/plugins/node_modules/`
+
+manifest.json 会记录已安装插件的版本信息。
 
 ## 跳过的 LSP
 

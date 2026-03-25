@@ -1,0 +1,46 @@
+diff --git a/script/download-onprem-deps.ts b/script/download-onprem-deps.ts
+index 88e87cf..6237349 100644
+--- a/script/download-onprem-deps.ts
++++ b/script/download-onprem-deps.ts
+@@ -748,6 +748,32 @@ async function createManifest(
+   console.log("Manifest created")
+ }
+ 
++async function updatePluginsManifest(pluginVersions: Record<string, string>): Promise<void> {
++  console.log("\n=== Updating manifest ===")
++
++  const manifestPath = path.join(DEPS_DIR, "manifest.json")
++  let manifest: Manifest
++
++  const existing = await Bun.file(manifestPath).json().catch(() => null)
++  if (existing) {
++    manifest = existing
++    manifest.created = new Date().toISOString()
++  } else {
++    manifest = {
++      version: "1.0.0",
++      created: new Date().toISOString(),
++      platform: "linux",
++      arch: "x64",
++      components: {},
++    }
++  }
++
++  manifest.components.plugins = Object.keys(pluginVersions).length > 0 ? pluginVersions : undefined
++
++  await Bun.write(manifestPath, JSON.stringify(manifest, null, 2))
++  console.log("Manifest updated with plugins")
++}
++
+ async function main() {
+   const args = process.argv.slice(2)
+   const pluginsOnly = args.includes("--plugins-only")
+@@ -761,6 +787,8 @@ async function main() {
+     const pluginList = await loadPluginsConfig()
+     const pluginVersions = await installPlugins(pluginList)
+ 
++    await updatePluginsManifest(pluginVersions)
++
+     console.log("\n=== Plugins only download complete ===")
+     if (Object.keys(pluginVersions).length > 0) {
+       console.log(`Plugins saved to: ${DEPS_DIR}/plugins/node_modules/`)

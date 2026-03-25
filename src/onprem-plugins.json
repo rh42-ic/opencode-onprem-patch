@@ -1,0 +1,10 @@
+{
+  "$schema": "./onprem-plugins.schema.json",
+  "plugins": [
+    "opencode-anthropic-auth@0.0.13",
+    "superpowers@git+https://github.com/obra/superpowers.git",
+    "@tarquinen/opencode-dcp@latest",
+    "opencode-supermemory@latest",
+    "github:JRedeker/opencode-morph-fast-apply"
+  ]
+}

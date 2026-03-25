@@ -19,10 +19,10 @@ cd opencode-new
 git init && git add -A && git commit -m "init"
 
 # 3. Apply patches
-git apply /path/to/opencode-onprem/patches/0001-add-onprem-module-and-scripts.patch
-git apply /path/to/opencode-onprem/patches/0002-modify-source-files.patch
-git apply /path/to/opencode-onprem/patches/lsp-server-onprem.patch
-git apply /path/to/opencode-onprem/patches/parsers-config-onprem.patch
+git apply /path/to/opencode-onprem-patch/patches/0001-add-onprem-module-and-scripts.patch
+git apply /path/to/opencode-onprem-patch/patches/0002-modify-source-files.patch
+git apply /path/to/opencode-onprem-patch/patches/lsp-server-onprem.patch
+git apply /path/to/opencode-onprem-patch/patches/parsers-config-onprem.patch
 
 # 4. If there are conflicts
 # Check .rej files, merge manually
@@ -32,7 +32,7 @@ git apply /path/to/opencode-onprem/patches/parsers-config-onprem.patch
 ### Or Use the Script
 
 ```bash
-/path/to/opencode-onprem/scripts/apply-patches.sh /path/to/opencode-new
+/path/to/opencode-onprem-patch/scripts/apply-patches.sh /path/to/opencode-new
 ```
 
 ## Patch File Descriptions
@@ -112,6 +112,8 @@ Create core module providing the following functions:
 - `resolveParserQuery()` - Resolve tree-sitter query file path
 - `parserWasmExists()` - Check if WASM file exists
 - `parserQueryExists()` - Check if query file exists
+- `resolvePlugin()` - Resolve offline plugin path
+- `pluginExists()` - Check if offline plugin exists
 - `tryServeStaticFile()` - Try to serve static file
 
 ### ripgrep.ts
@@ -234,9 +236,53 @@ import { Onprem } from "../onprem"
 
 2. Add offline path check in each LSP's spawn() function (refer to patch file).
 
+### bun/index.ts
+
+1. Add import:
+```typescript
+import { Onprem } from "../onprem"
+```
+
+2. Add offline plugin detection at the beginning of `BunProc.install()` function:
+```typescript
+// onprem-fork: check offline plugins directory first
+if (Onprem.isEnabled()) {
+  const pluginPath = Onprem.resolvePlugin(pkg)
+  if (pluginPath && await Onprem.pluginExists(pkg)) {
+    log.info("using onprem plugin", { pkg, path: pluginPath })
+    return pluginPath
+  }
+}
+```
+
 ## Build Process
 
-### 1. Pre-download Dependencies on Networked Machine
+### 1. Configure Offline Plugins (Optional)
+
+Edit `script/onprem-plugins.json` to configure plugins for offline use:
+
+```json
+{
+  "$schema": "./onprem-plugins.schema.json",
+  "plugins": [
+    "opencode-anthropic-auth@0.0.13",
+    "superpowers@git+https://github.com/obra/superpowers.git",
+    "@tarquinen/opencode-dcp@latest",
+    "opencode-supermemory@latest",
+    "github:JRedeker/opencode-morph-fast-apply"
+  ]
+}
+```
+
+Configuration formats:
+- `package@version` - Specific version of npm package
+- `package@latest` - Latest version of npm package
+- `@scope/package@version` - Scoped package
+- `package@git+https://...` - Git repository source
+- `package@git+ssh://...` - Git SSH source
+- `github:user/repo` - GitHub shorthand format
+
+### 2. Pre-download Dependencies on Networked Machine
 
 ```bash
 cd opencode
@@ -249,7 +295,12 @@ Optional environment variables:
 - `RUST_ANALYZER_MIRROR_URL` - Mirror source for rust-analyzer
 - `SKIP_WEB_APP_BUILD=true` - Skip Web App build
 
-### 2. Package Offline Bundle
+Download plugins only (for testing):
+```bash
+bun run script/download-onprem-deps.ts --plugins-only
+```
+
+### 3. Package Offline Bundle
 
 ```bash
 OPENCODE_VERSION=1.2.27 bun run script/package-onprem-bundle.ts
@@ -257,7 +308,7 @@ OPENCODE_VERSION=1.2.27 bun run script/package-onprem-bundle.ts
 
 > **Note:** The `OPENCODE_VERSION` environment variable sets the compiled version number.
 
-### 3. Deploy on Offline Machine
+### 4. Deploy on Offline Machine
 
 ```bash
 # Standard version (requires AVX2)
@@ -283,6 +334,7 @@ git diff HEAD~1 HEAD -- packages/opencode/src/onprem/index.ts script/ > patches/
 git diff HEAD~1 HEAD -- packages/opencode/src/flag/flag.ts packages/opencode/src/file/ripgrep.ts packages/opencode/src/provider/models.ts packages/opencode/src/server/server.ts packages/opencode/src/installation/index.ts > patches/0002-modify-source-files.patch
 git diff HEAD~1 HEAD -- packages/opencode/src/lsp/server.ts > patches/lsp-server-onprem.patch
 git diff HEAD~1 HEAD -- packages/opencode/parsers-config.ts > patches/parsers-config-onprem.patch
+git diff HEAD~1 HEAD -- packages/opencode/src/bun/index.ts packages/opencode/src/onprem/index.ts script/download-onprem-deps.ts script/onprem-plugins.json script/onprem-plugins.schema.json > patches/plugins-onprem.patch
 ```
 
 ## Pre-downloaded Resources Manifest
@@ -329,9 +381,19 @@ Storage path: `deps/tree-sitter/queries/{lang}/`
 ### Other Resources
 
 | Component | Storage Path |
-|-----------|--------------|
+|------------|--------------|
 | models.json | `deps/models.json` |
 | Web App | `deps/app/` |
+
+### Offline Plugins
+
+Configured via `script/onprem-plugins.json`, supports:
+- npm packages (e.g., `opencode-anthropic-auth@0.0.13`)
+- Git repositories (e.g., `superpowers@git+https://github.com/obra/superpowers.git`)
+
+Storage path: `deps/plugins/node_modules/`
+
+The manifest.json records installed plugin version information.
 
 ## Skipped LSPs
 
