@@ -1040,10 +1040,10 @@ index 0000000..49762f1
 \ No newline at end of file
 diff --git a/script/package-onprem-bundle.ts b/script/package-onprem-bundle.ts
 new file mode 100644
-index 0000000..fcf48a3
+index 0000000..184a881
 --- /dev/null
 +++ b/script/package-onprem-bundle.ts
-@@ -0,0 +1,333 @@
+@@ -0,0 +1,372 @@
 +#!/usr/bin/env bun
 +
 +import { $ } from "bun"
@@ -1164,6 +1164,29 @@ index 0000000..fcf48a3
 +  await fs.chmod(path.join(BUNDLE_DIR, "opencode-onprem"), 0o755)
 +}
 +
++async function createEnvFile(variant: BuildVariant): Promise<void> {
++  const suffix = variant === "baseline" ? "-baseline" : ""
++  const BUNDLE_DIR = path.join("dist", `${BUNDLE_BASE_NAME}${suffix}`)
++
++  console.log("Creating env file...")
++
++  const envContent = `# OpenCode Onprem Environment Variables
++# Source this file before running opencode:
++#   source opencode-onprem.env
++#   ./bin/opencode [args...]
++
++SCRIPT_DIR="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
++
++export OPENCODE_ONPREM_MODE=true
++export OPENCODE_ONPREM_DEPS_PATH="\$SCRIPT_DIR/deps"
++export OPENCODE_DISABLE_AUTOUPDATE=true
++export OPENCODE_DISABLE_LSP_DOWNLOAD=true
++export OPENCODE_DISABLE_MODELS_FETCH=true
++`
++
++  await Bun.write(path.join(BUNDLE_DIR, "opencode-onprem.env"), envContent)
++}
++
 +async function createReadme(variant: BuildVariant): Promise<void> {
 +  const suffix = variant === "baseline" ? "-baseline" : ""
 +  const BUNDLE_DIR = path.join("dist", `${BUNDLE_BASE_NAME}${suffix}`)
@@ -1203,6 +1226,7 @@ index 0000000..fcf48a3
 +  - \`opentui/\` - OpenTUI native library
 +- \`manifest.json\` - Version information for all bundled components
 +- \`opencode-onprem\` - Wrapper script that sets up the environment
++- \`opencode-onprem.env\` - Environment file for sourcing into shell
 +
 +## Usage
 +
@@ -1212,20 +1236,34 @@ index 0000000..fcf48a3
 +./opencode-onprem
 +\`\`\`
 +
++### Option 2: Source environment file
++
++\`\`\`bash
++source opencode-onprem.env
++./bin/opencode
++\`\`\`
++
++This is useful when you want to:
++- Set additional environment variables before running
++- Run opencode multiple times without restarting the shell
++- Integrate with existing shell scripts or workflows
++
++### Option 3: Set environment variables manually
++
++\`\`\`bash
++export OPENCODE_ONPREM_MODE=true
++export OPENCODE_ONPREM_DEPS_PATH=/path/to/deps
++./bin/opencode
++\`\`\`
++
 +### Web UI
 +
 +To start the web interface (served locally from the bundled app):
 +
 +\`\`\`bash
 +./opencode-onprem web
-+\`\`\`
-+
-+### Option 2: Set environment variables manually
-+
-+\`\`\`bash
-+export OPENCODE_ONPREM_MODE=true
-+export OPENCODE_ONPREM_DEPS_PATH=/path/to/deps
-+./bin/opencode
++# or
++source opencode-onprem.env && ./bin/opencode web
 +\`\`\`
 +
 +## Supported Languages
@@ -1360,6 +1398,7 @@ index 0000000..fcf48a3
 +    console.log(`\nFound ${variant} build: ${buildDir}`)
 +    await createBundle(buildDir, variant)
 +    await createWrapperScript(variant)
++    await createEnvFile(variant)
 +    await createReadme(variant)
 +    await createTarball(variant)
 +  }
