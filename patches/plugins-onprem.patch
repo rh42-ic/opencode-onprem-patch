@@ -1,10 +1,10 @@
 diff --git a/packages/opencode/src/bun/index.ts b/packages/opencode/src/bun/index.ts
-index d6c4538..38a3d2f 100644
+index dbdf5a2..24463cd 100644
 --- a/packages/opencode/src/bun/index.ts
 +++ b/packages/opencode/src/bun/index.ts
 @@ -8,6 +8,7 @@ import { Lock } from "../util/lock"
  import { PackageRegistry } from "./registry"
- import { proxied } from "@/util/proxied"
+ import { online, proxied } from "@/util/network"
  import { Process } from "../util/process"
 +import { Onprem } from "../onprem"
  

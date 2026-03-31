@@ -80,7 +80,7 @@ bun run script/download-onprem-deps.ts --plugins-only
 ### 3. 打包
 
 ```bash
-OPENCODE_VERSION=1.3.2 bun run script/package-onprem-bundle.ts
+OPENCODE_VERSION=1.3.5 bun run script/package-onprem-bundle.ts
 ```
 
 > **注意：** `OPENCODE_VERSION` 环境变量用于设置编译后的版本号。
@@ -117,19 +117,19 @@ cd opencode-onprem-linux-x64-baseline
 ### 0002-modify-source-files.patch
 
 修改文件：
-- `packages/opencode/package.json` - 添加 opentui 依赖
 - `packages/opencode/src/flag/flag.ts` - 添加环境变量
 - `packages/opencode/src/file/ripgrep.ts` - 离线 ripgrep
 - `packages/opencode/src/provider/models.ts` - 离线 models.json
-- `packages/opencode/src/server/server.ts` - Web UI 静态服务
+- `packages/opencode/src/server/instance.ts` - Web UI 静态服务
 
 ### lsp-server-onprem.patch
 
 为以下 LSP 添加离线支持：
 
-**Binary LSPs (7个):**
+**Binary LSPs (11个):**
 - clangd, rust-analyzer, zls, lua-language-server
-- terraform-ls, texlab, tinymist
+- terraform-ls, texlab, tinymist, kotlin-ls
+- jdtls, vscode-eslint, elixir-ls
 
 **NPM-based LSPs (9个):**
 - typescript-language-server, pyright
@@ -159,6 +159,10 @@ cd opencode-onprem-linux-x64-baseline
 | terraform-ls | Terraform | HashiCorp Releases |
 | texlab | LaTeX | GitHub Releases |
 | tinymist | Typst | GitHub Releases |
+| kotlin-ls | Kotlin | GitHub Releases |
+| jdtls | Java | Eclipse Downloads |
+| vscode-eslint | ESLint | GitHub Releases |
+| elixir-ls | Elixir | GitHub Releases |
 
 ### NPM-based LSPs
 
@@ -202,7 +206,11 @@ deps/
 │   ├── lua-language-server/bin/lua-language-server
 │   ├── terraform-ls/terraform-ls
 │   ├── texlab/bin/texlab
-│   └── tinymist/bin/tinymist
+│   ├── tinymist/bin/tinymist
+│   ├── kotlin-ls/bin/kotlin-lsp.sh
+│   ├── jdtls/plugins/
+│   ├── vscode-eslint/server/out/eslintServer.js
+│   └── elixir-ls-master/release/language_server.sh
 ├── tree-sitter/
 │   ├── wasm/                        # WASM 解析器
 │   │   ├── tree-sitter-python.wasm

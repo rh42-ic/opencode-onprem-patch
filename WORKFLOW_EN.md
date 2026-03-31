@@ -54,7 +54,7 @@ Modified files:
 | `packages/opencode/src/flag/flag.ts` | Add `OPENCODE_ONPREM_MODE` and `OPENCODE_ONPREM_DEPS_PATH` flags |
 | `packages/opencode/src/file/ripgrep.ts` | Add offline ripgrep path check |
 | `packages/opencode/src/provider/models.ts` | Add loading model data from deps/models.json with dual fallback and logging |
-| `packages/opencode/src/server/server.ts` | Add Web UI static file serving |
+| `packages/opencode/src/server/instance.ts` | Add Web UI static file serving |
 
 ### lsp-server-onprem.patch
 
@@ -68,6 +68,10 @@ Modifies `packages/opencode/src/lsp/server.ts`, adding offline path checks for t
 - terraform-ls
 - texlab (LaTeX)
 - tinymist (Typst)
+- kotlin-ls (Kotlin)
+- jdtls (Java)
+- vscode-eslint (ESLint)
+- elixir-ls (Elixir)
 
 **NPM-based LSPs:**
 - typescript-language-server
@@ -211,7 +215,7 @@ if (!Onprem.isEnabled() && !Flag.OPENCODE_DISABLE_MODELS_FETCH && !process.argv.
 - deps directory exists but models.json missing: `log.warn("onprem enabled but deps models.json not found", { path: depsPath })`
 - Failed to read models.json: `log.warn("failed to read onprem models.json", { path: modelsPath, error: String(e) })`
 
-### server/server.ts
+### server/instance.ts
 
 1. Add import:
 ```typescript
@@ -303,7 +307,7 @@ bun run script/download-onprem-deps.ts --plugins-only
 ### 3. Package Offline Bundle
 
 ```bash
-OPENCODE_VERSION=1.2.27 bun run script/package-onprem-bundle.ts
+OPENCODE_VERSION=1.3.5 bun run script/package-onprem-bundle.ts
 ```
 
 > **Note:** The `OPENCODE_VERSION` environment variable sets the compiled version number.
@@ -331,7 +335,7 @@ git commit -m "onprem modifications for version x.x.x"
 
 # Generate new patches
 git diff HEAD~1 HEAD -- packages/opencode/src/onprem/index.ts script/ > patches/0001-add-onprem-module-and-scripts.patch
-git diff HEAD~1 HEAD -- packages/opencode/src/flag/flag.ts packages/opencode/src/file/ripgrep.ts packages/opencode/src/provider/models.ts packages/opencode/src/server/server.ts packages/opencode/src/installation/index.ts > patches/0002-modify-source-files.patch
+git diff HEAD~1 HEAD -- packages/opencode/src/flag/flag.ts packages/opencode/src/file/ripgrep.ts packages/opencode/src/provider/models.ts packages/opencode/src/server/instance.ts packages/opencode/src/installation/index.ts > patches/0002-modify-source-files.patch
 git diff HEAD~1 HEAD -- packages/opencode/src/lsp/server.ts > patches/lsp-server-onprem.patch
 git diff HEAD~1 HEAD -- packages/opencode/parsers-config.ts > patches/parsers-config-onprem.patch
 git diff HEAD~1 HEAD -- packages/opencode/src/bun/index.ts packages/opencode/src/onprem/index.ts script/download-onprem-deps.ts script/onprem-plugins.json script/onprem-plugins.schema.json > patches/plugins-onprem.patch
@@ -349,8 +353,12 @@ git diff HEAD~1 HEAD -- packages/opencode/src/bun/index.ts packages/opencode/src
 | ZLS | GitHub Releases | `deps/lsp/zls/bin/zls` |
 | LuaLS | GitHub Releases | `deps/lsp/lua-language-server/bin/lua-language-server` |
 | Terraform-LS | HashiCorp Releases | `deps/lsp/terraform-ls/terraform-ls` |
-|TexLab | GitHub Releases | `deps/lsp/texlab/bin/texlab` |
+| TexLab | GitHub Releases | `deps/lsp/texlab/bin/texlab` |
 | Tinymist | GitHub Releases | `deps/lsp/tinymist/bin/tinymist` |
+| Kotlin-LS | GitHub Releases | `deps/lsp/kotlin-ls/bin/kotlin-lsp.sh` |
+| JDTLS | Eclipse Downloads | `deps/lsp/jdtls/` |
+| VSCode-ESLint | GitHub Releases | `deps/lsp/vscode-eslint/server/out/eslintServer.js` |
+| Elixir-LS | GitHub Releases | `deps/lsp/elixir-ls-master/release/language_server.sh` |
 
 ### NPM-based LSPs
 
@@ -397,13 +405,10 @@ The manifest.json records installed plugin version information.
 
 ## Skipped LSPs
 
-The following LSPs are skipped due to complex runtime environment dependencies:
+The following LSPs are skipped due to complex runtime environment dependencies or lack of auto-download implementation:
 
 | LSP | Reason |
 |-----|--------|
-| ElixirLS | Requires Elixir runtime |
-| Kotlin LSP | Requires JetBrains CDN |
-| jdtls | Requires Java 21+ |
 | Haskell LS | Requires GHC |
 | Gleam LS | Requires gleam installation |
 | Clojure LS | Requires clojure-lsp installation |

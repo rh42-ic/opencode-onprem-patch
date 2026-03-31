@@ -1,6 +1,6 @@
 diff --git a/packages/opencode/src/onprem/index.ts b/packages/opencode/src/onprem/index.ts
 new file mode 100644
-index 0000000..e8c992d
+index 0000000..c42c3b8
 --- /dev/null
 +++ b/packages/opencode/src/onprem/index.ts
 @@ -0,0 +1,84 @@
@@ -29,10 +29,10 @@ index 0000000..e8c992d
 +    return path.join(depsPath, "node_modules", pkg)
 +  }
 +
-+  export function resolveLspBinary(lspName: string, binaryName: string): string | undefined {
++  export function resolveLspBinary(lspName: string, binaryPath: string): string | undefined {
 +    const depsPath = getDepsPath()
 +    if (!isEnabled() || !depsPath) return undefined
-+    return path.join(depsPath, "lsp", lspName, "bin", binaryName)
++    return path.join(depsPath, "lsp", lspName, binaryPath)
 +  }
 +
 +  export function resolveAppDist(): string | undefined {
@@ -91,10 +91,10 @@ index 0000000..e8c992d
 \ No newline at end of file
 diff --git a/script/download-onprem-deps.ts b/script/download-onprem-deps.ts
 new file mode 100644
-index 0000000..ac39e7b
+index 0000000..990df81
 --- /dev/null
 +++ b/script/download-onprem-deps.ts
-@@ -0,0 +1,897 @@
+@@ -0,0 +1,993 @@
 +#!/usr/bin/env bun
 +
 +import { $ } from "bun"
@@ -238,6 +238,10 @@ index 0000000..ac39e7b
 +    terraformLs?: string
 +    texlab?: string
 +    tinymist?: string
++    kotlin?: string
++    jdtls?: string
++    eslint?: string
++    elixir?: string
 +    treeSitterWasm: string[]
 +    npmPackages: Record<string, string>
 +    plugins?: Record<string, string>
@@ -354,15 +358,91 @@ index 0000000..ac39e7b
 +  }
 +}
 +
-+async function extractZip(archivePath: string, destDir: string): Promise<void> {
-+  const proc = Bun.spawn(["unzip", "-o", "-q", archivePath, "-d", destDir], {
++async function extractZip(archive: string, dir: string) {
++  const proc = Bun.spawn(["unzip", "-o", "-q", archive, "-d", dir], {
 +    stdout: "pipe",
 +    stderr: "pipe",
 +  })
 +  await proc.exited
 +  if (proc.exitCode !== 0) {
-+    const stderr = await Bun.readableStreamToText(proc.stderr)
-+    throw new Error(`Failed to extract ${archivePath}: ${stderr}`)
++    throw new Error(`Failed to extract ${archive}`)
++  }
++}
++
++async function downloadKotlin() {
++  console.log("\n=== Downloading Kotlin Language Server ===")
++
++  try {
++    const res = await fetch("https://api.github.com/repos/Kotlin/kotlin-lsp/releases/latest")
++    if (!res.ok) return
++    const release = await res.json() as { name: string }
++    const ver = release.name.replace(/^v/, "")
++    const url = `https://download-cdn.jetbrains.com/kotlin-lsp/${ver}/kotlin-lsp-${ver}-linux-x64.zip`
++    const dist = path.join(DEPS_DIR, "lsp", "kotlin-ls")
++    await fs.mkdir(dist, { recursive: true })
++    const archive = path.join(DEPS_DIR, "kotlin-ls.zip")
++    await downloadFile(url, archive)
++    await extractZip(archive, dist)
++    await fs.unlink(archive)
++    await fs.chmod(path.join(dist, "kotlin-lsp.sh"), 0o755).catch(() => {})
++    return ver
++  } catch (err) {
++    return
++  }
++}
++
++async function downloadJdtls() {
++  console.log("\n=== Downloading JDTLS (Java Language Server) ===")
++
++  try {
++    const dist = path.join(DEPS_DIR, "lsp", "jdtls")
++    await fs.mkdir(dist, { recursive: true })
++    const url = "https://download.eclipse.org/jdtls/snapshots/jdt-language-server-latest.tar.gz"
++    const archive = path.join(DEPS_DIR, "jdtls.tar.gz")
++    await downloadFile(url, archive)
++    await extractTarGz(archive, dist)
++    await fs.unlink(archive)
++    return "latest"
++  } catch (err) {
++    return
++  }
++}
++
++async function downloadEslint() {
++  console.log("\n=== Downloading VS Code ESLint server ===")
++
++  try {
++    const dist = path.join(DEPS_DIR, "lsp", "vscode-eslint")
++    const archive = path.join(DEPS_DIR, "eslint.zip")
++    await downloadFile("https://github.com/microsoft/vscode-eslint/archive/refs/heads/main.zip", archive)
++    await extractZip(archive, path.join(DEPS_DIR, "lsp"))
++    await fs.unlink(archive)
++    const src = path.join(DEPS_DIR, "lsp", "vscode-eslint-main")
++    await fs.rename(src, dist)
++    await Bun.spawn(["npm", "install"], { cwd: dist }).exited
++    await Bun.spawn(["npm", "run", "compile"], { cwd: dist }).exited
++    return "main"
++  } catch (err) {
++    return
++  }
++}
++
++async function downloadElixir() {
++  console.log("\n=== Downloading ElixirLS ===")
++
++  try {
++    const archive = path.join(DEPS_DIR, "elixir-ls.zip")
++    await downloadFile("https://github.com/elixir-lsp/elixir-ls/archive/refs/heads/master.zip", archive)
++    await extractZip(archive, path.join(DEPS_DIR, "lsp"))
++    await fs.unlink(archive)
++    const dist = path.join(DEPS_DIR, "lsp", "elixir-ls-master")
++    const env = { MIX_ENV: "prod", ...process.env }
++    await Bun.spawn(["mix", "deps.get"], { cwd: dist, env }).exited
++    await Bun.spawn(["mix", "compile"], { cwd: dist, env }).exited
++    await Bun.spawn(["mix", "elixir_ls.release2", "-o", "release"], { cwd: dist, env }).exited
++    return "master"
++  } catch (err) {
++    return
 +  }
 +}
 +
@@ -851,6 +931,10 @@ index 0000000..ac39e7b
 +  terraformLsVersion: string | undefined,
 +  texlabVersion: string | undefined,
 +  tinymistVersion: string | undefined,
++  kotlin: string | undefined,
++  jdtls: string | undefined,
++  eslint: string | undefined,
++  elixir: string | undefined,
 +  treeSitterWasm: string[],
 +  npmVersions: Record<string, string>
 +): Promise<void> {
@@ -870,6 +954,10 @@ index 0000000..ac39e7b
 +      terraformLs: terraformLsVersion,
 +      texlab: texlabVersion,
 +      tinymist: tinymistVersion,
++      kotlin,
++      jdtls,
++      vscodeEslint: eslint,
++      elixirLs: elixir,
 +      treeSitterWasm,
 +      npmPackages: npmVersions,
 +    },
@@ -921,6 +1009,10 @@ index 0000000..ac39e7b
 +  const terraformLsVersion = await downloadTerraformLs()
 +  const texlabVersion = await downloadTexlab()
 +  const tinymistVersion = await downloadTinymist()
++  const kotlin = await downloadKotlin()
++  const jdtls = await downloadJdtls()
++  const eslint = await downloadEslint()
++  const elixir = await downloadElixir()
 +  
 +  const treeSitterWasm = await downloadTreeSitterWasm()
 +  await downloadTreeSitterQueries()
@@ -938,6 +1030,10 @@ index 0000000..ac39e7b
 +    terraformLsVersion,
 +    texlabVersion,
 +    tinymistVersion,
++    kotlin,
++    jdtls,
++    eslint,
++    elixir,
 +    treeSitterWasm,
 +    npmVersions
 +  )
@@ -1040,10 +1136,10 @@ index 0000000..49762f1
 \ No newline at end of file
 diff --git a/script/package-onprem-bundle.ts b/script/package-onprem-bundle.ts
 new file mode 100644
-index 0000000..184a881
+index 0000000..a413b04
 --- /dev/null
 +++ b/script/package-onprem-bundle.ts
-@@ -0,0 +1,372 @@
+@@ -0,0 +1,380 @@
 +#!/usr/bin/env bun
 +
 +import { $ } from "bun"
@@ -1214,6 +1310,10 @@ index 0000000..184a881
 +    - \`terraform-ls/\` - Terraform language server
 +    - \`texlab/\` - LaTeX language server
 +    - \`tinymist/\` - Typst language server
++    - \`kotlin-ls/\` - Kotlin language server
++    - \`jdtls/\` - Java language server
++    - \`vscode-eslint/\` - ESLint server
++    - \`elixir-ls-master/\` - Elixir language server
 +  - \`node_modules/\` - npm packages for language servers
 +  - \`tree-sitter/\` - Tree-sitter parsers for syntax highlighting
 +    - \`wasm/\` - WASM parser files
@@ -1290,6 +1390,10 @@ index 0000000..184a881
 +| Terraform/HCL | terraform-ls |
 +| LaTeX | texlab |
 +| Typst | tinymist |
++| Kotlin | kotlin-ls |
++| Java | jdtls |
++| ESLint | vscode-eslint |
++| Elixir | elixir-ls |
 +
 +### Requires language runtime
 +

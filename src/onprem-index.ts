@@ -23,10 +23,10 @@ export namespace Onprem {
     return path.join(depsPath, "node_modules", pkg)
   }
 
-  export function resolveLspBinary(lspName: string, binaryName: string): string | undefined {
+  export function resolveLspBinary(lspName: string, binaryPath: string): string | undefined {
     const depsPath = getDepsPath()
     if (!isEnabled() || !depsPath) return undefined
-    return path.join(depsPath, "lsp", lspName, "bin", binaryName)
+    return path.join(depsPath, "lsp", lspName, binaryPath)
   }
 
   export function resolveAppDist(): string | undefined {

@@ -1,7 +1,7 @@
 {
-  "version": "1.3.2",
-  "base": "opencode-1.3.2",
-  "created": "2026-03-25",
+  "version": "1.3.5",
+  "base": "opencode-1.3.5",
+  "created": "2026-03-30",
   "modifications": [
     {
       "file": "packages/opencode/src/onprem/index.ts",
@@ -61,7 +61,7 @@
       "patch": "0002-modify-source-files.patch"
     },
     {
-      "file": "packages/opencode/src/server/server.ts",
+      "file": "packages/opencode/src/server/instance.ts",
       "action": "modify",
       "description": "Serve static files from deps/app in onprem mode",
       "search_marker": "// onprem-fork:",
@@ -119,6 +119,10 @@
     "lsp/terraform-ls/terraform-ls": "Terraform Language Server binary",
     "lsp/texlab/bin/texlab": "TexLab (LaTeX) Language Server binary",
     "lsp/tinymist/bin/tinymist": "Tinymist (Typst) Language Server binary",
+    "lsp/kotlin-ls/bin/kotlin-lsp.sh": "Kotlin Language Server binary",
+    "lsp/jdtls/": "Eclipse JDT Language Server directory",
+    "lsp/vscode-eslint/server/out/eslintServer.js": "VS Code ESLint server script",
+    "lsp/elixir-ls-master/release/language_server.sh": "Elixir Language Server script",
     "tree-sitter/wasm/": "Tree-sitter WASM parser files (25 languages)",
     "tree-sitter/queries/": "Tree-sitter query files (highlights, locals)",
     "node_modules/typescript/": "TypeScript npm package",
@@ -146,7 +150,11 @@
       "lua-language-server (Lua)",
       "terraform-ls (Terraform)",
       "texlab (LaTeX)",
-      "tinymist (Typst)"
+      "tinymist (Typst)",
+      "kotlin-ls (Kotlin)",
+      "jdtls (Java)",
+      "vscode-eslint (ESLint)",
+      "elixir-ls (Elixir)"
     ],
     "npm_lsps": [
       "typescript-language-server (TypeScript/JavaScript)",
@@ -165,7 +173,6 @@
       "haskell", "css", "julia", "lua", "ocaml", "clojure", "swift", "toml", "nix"
     ],
     "system_lsps": [
-      "jdtls (requires Java 21+)",
       "haskell-language-server (requires GHC)",
       "gleam (requires gleam installed)",
       "clojure-lsp (requires clojure-lsp installed)",

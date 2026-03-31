@@ -141,6 +141,10 @@ interface Manifest {
     terraformLs?: string
     texlab?: string
     tinymist?: string
+    kotlin?: string
+    jdtls?: string
+    eslint?: string
+    elixir?: string
     treeSitterWasm: string[]
     npmPackages: Record<string, string>
     plugins?: Record<string, string>
@@ -257,15 +261,91 @@ async function extractTarXz(archivePath: string, destDir: string, stripComponent
   }
 }
 
-async function extractZip(archivePath: string, destDir: string): Promise<void> {
-  const proc = Bun.spawn(["unzip", "-o", "-q", archivePath, "-d", destDir], {
+async function extractZip(archive: string, dir: string) {
+  const proc = Bun.spawn(["unzip", "-o", "-q", archive, "-d", dir], {
     stdout: "pipe",
     stderr: "pipe",
   })
   await proc.exited
   if (proc.exitCode !== 0) {
-    const stderr = await Bun.readableStreamToText(proc.stderr)
-    throw new Error(`Failed to extract ${archivePath}: ${stderr}`)
+    throw new Error(`Failed to extract ${archive}`)
+  }
+}
+
+async function downloadKotlin() {
+  console.log("\n=== Downloading Kotlin Language Server ===")
+
+  try {
+    const res = await fetch("https://api.github.com/repos/Kotlin/kotlin-lsp/releases/latest")
+    if (!res.ok) return
+    const release = await res.json() as { name: string }
+    const ver = release.name.replace(/^v/, "")
+    const url = `https://download-cdn.jetbrains.com/kotlin-lsp/${ver}/kotlin-lsp-${ver}-linux-x64.zip`
+    const dist = path.join(DEPS_DIR, "lsp", "kotlin-ls")
+    await fs.mkdir(dist, { recursive: true })
+    const archive = path.join(DEPS_DIR, "kotlin-ls.zip")
+    await downloadFile(url, archive)
+    await extractZip(archive, dist)
+    await fs.unlink(archive)
+    await fs.chmod(path.join(dist, "kotlin-lsp.sh"), 0o755).catch(() => {})
+    return ver
+  } catch (err) {
+    return
+  }
+}
+
+async function downloadJdtls() {
+  console.log("\n=== Downloading JDTLS (Java Language Server) ===")
+
+  try {
+    const dist = path.join(DEPS_DIR, "lsp", "jdtls")
+    await fs.mkdir(dist, { recursive: true })
+    const url = "https://download.eclipse.org/jdtls/snapshots/jdt-language-server-latest.tar.gz"
+    const archive = path.join(DEPS_DIR, "jdtls.tar.gz")
+    await downloadFile(url, archive)
+    await extractTarGz(archive, dist)
+    await fs.unlink(archive)
+    return "latest"
+  } catch (err) {
+    return
+  }
+}
+
+async function downloadEslint() {
+  console.log("\n=== Downloading VS Code ESLint server ===")
+
+  try {
+    const dist = path.join(DEPS_DIR, "lsp", "vscode-eslint")
+    const archive = path.join(DEPS_DIR, "eslint.zip")
+    await downloadFile("https://github.com/microsoft/vscode-eslint/archive/refs/heads/main.zip", archive)
+    await extractZip(archive, path.join(DEPS_DIR, "lsp"))
+    await fs.unlink(archive)
+    const src = path.join(DEPS_DIR, "lsp", "vscode-eslint-main")
+    await fs.rename(src, dist)
+    await Bun.spawn(["npm", "install"], { cwd: dist }).exited
+    await Bun.spawn(["npm", "run", "compile"], { cwd: dist }).exited
+    return "main"
+  } catch (err) {
+    return
+  }
+}
+
+async function downloadElixir() {
+  console.log("\n=== Downloading ElixirLS ===")
+
+  try {
+    const archive = path.join(DEPS_DIR, "elixir-ls.zip")
+    await downloadFile("https://github.com/elixir-lsp/elixir-ls/archive/refs/heads/master.zip", archive)
+    await extractZip(archive, path.join(DEPS_DIR, "lsp"))
+    await fs.unlink(archive)
+    const dist = path.join(DEPS_DIR, "lsp", "elixir-ls-master")
+    const env = { MIX_ENV: "prod", ...process.env }
+    await Bun.spawn(["mix", "deps.get"], { cwd: dist, env }).exited
+    await Bun.spawn(["mix", "compile"], { cwd: dist, env }).exited
+    await Bun.spawn(["mix", "elixir_ls.release2", "-o", "release"], { cwd: dist, env }).exited
+    return "master"
+  } catch (err) {
+    return
   }
 }
 
@@ -754,6 +834,10 @@ async function createManifest(
   terraformLsVersion: string | undefined,
   texlabVersion: string | undefined,
   tinymistVersion: string | undefined,
+  kotlin: string | undefined,
+  jdtls: string | undefined,
+  eslint: string | undefined,
+  elixir: string | undefined,
   treeSitterWasm: string[],
   npmVersions: Record<string, string>
 ): Promise<void> {
@@ -773,6 +857,10 @@ async function createManifest(
       terraformLs: terraformLsVersion,
       texlab: texlabVersion,
       tinymist: tinymistVersion,
+      kotlin,
+      jdtls,
+      vscodeEslint: eslint,
+      elixirLs: elixir,
       treeSitterWasm,
       npmPackages: npmVersions,
     },
@@ -824,6 +912,10 @@ async function main() {
   const terraformLsVersion = await downloadTerraformLs()
   const texlabVersion = await downloadTexlab()
   const tinymistVersion = await downloadTinymist()
+  const kotlin = await downloadKotlin()
+  const jdtls = await downloadJdtls()
+  const eslint = await downloadEslint()
+  const elixir = await downloadElixir()
   
   const treeSitterWasm = await downloadTreeSitterWasm()
   await downloadTreeSitterQueries()
@@ -841,6 +933,10 @@ async function main() {
     terraformLsVersion,
     texlabVersion,
     tinymistVersion,
+    kotlin,
+    jdtls,
+    eslint,
+    elixir,
     treeSitterWasm,
     npmVersions
   )

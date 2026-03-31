@@ -39,6 +39,24 @@ git -C "$SOURCE_DIR" apply "$PATCHES_DIR/0002-modify-source-files.patch" || {
     exit 1
 }
 
+echo "Applying patch: lsp-server-onprem.patch"
+git -C "$SOURCE_DIR" apply "$PATCHES_DIR/lsp-server-onprem.patch" || {
+    echo "Error: Failed to apply lsp-server-onprem.patch"
+    exit 1
+}
+
+echo "Applying patch: parsers-config-onprem.patch"
+git -C "$SOURCE_DIR" apply "$PATCHES_DIR/parsers-config-onprem.patch" || {
+    echo "Error: Failed to apply parsers-config-onprem.patch"
+    exit 1
+}
+
+echo "Applying patch: plugins-onprem.patch"
+git -C "$SOURCE_DIR" apply "$PATCHES_DIR/plugins-onprem.patch" || {
+    echo "Error: Failed to apply plugins-onprem.patch"
+    exit 1
+}
+
 echo ""
 echo "=== Patches applied successfully ==="
 echo ""
@@ -47,8 +65,10 @@ echo "  - packages/opencode/src/onprem/index.ts (new)"
 echo "  - packages/opencode/src/flag/flag.ts"
 echo "  - packages/opencode/src/file/ripgrep.ts"
 echo "  - packages/opencode/src/provider/models.ts"
-echo "  - packages/opencode/src/server/server.ts"
+echo "  - packages/opencode/src/server/instance.ts"
 echo "  - packages/opencode/src/lsp/server.ts"
+echo "  - packages/opencode/src/bun/index.ts"
+echo "  - packages/opencode/parsers-config.ts"
 echo "  - script/download-onprem-deps.ts (new)"
 echo "  - script/package-onprem-bundle.ts (new)"
 echo ""

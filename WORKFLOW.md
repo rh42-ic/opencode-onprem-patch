@@ -58,7 +58,7 @@ git apply /path/to/opencode-onprem-patch/patches/plugins-onprem.patch
 | `packages/opencode/src/flag/flag.ts` | 添加 `OPENCODE_ONPREM_MODE` 和 `OPENCODE_ONPREM_DEPS_PATH` 标志 |
 | `packages/opencode/src/file/ripgrep.ts` | 添加离线 ripgrep 路径检查 |
 | `packages/opencode/src/provider/models.ts` | 添加从 deps/models.json 加载模型数据 |
-| `packages/opencode/src/server/server.ts` | 添加 Web UI 静态文件服务 |
+| `packages/opencode/src/server/instance.ts` | 添加 Web UI 静态文件服务 |
 
 ### lsp-server-onprem.patch
 
@@ -72,6 +72,10 @@ git apply /path/to/opencode-onprem-patch/patches/plugins-onprem.patch
 - terraform-ls
 - texlab (LaTeX)
 - tinymist (Typst)
+- kotlin-ls (Kotlin)
+- jdtls (Java)
+- vscode-eslint (ESLint)
+- elixir-ls (Elixir)
 
 **NPM-based LSPs:**
 - typescript-language-server
@@ -190,7 +194,7 @@ export const Data = lazy(async () => {
 3. 内置快照 (`models-snapshot.ts`)
 4. 网络获取（如果 `OPENCODE_DISABLE_MODELS_FETCH` 未设置）
 
-### server/server.ts
+### server/instance.ts
 
 1. 添加导入：
 ```typescript
@@ -282,7 +286,7 @@ bun run script/download-onprem-deps.ts --plugins-only
 ### 3. 打包离线 bundle
 
 ```bash
-OPENCODE_VERSION=1.3.2 bun run script/package-onprem-bundle.ts
+OPENCODE_VERSION=1.3.5 bun run script/package-onprem-bundle.ts
 ```
 
 > **注意：** `OPENCODE_VERSION` 环境变量用于设置编译后的版本号。
@@ -310,7 +314,7 @@ git commit -m "onprem modifications for version x.x.x"
 
 # 生成新 patch
 git diff HEAD~1 HEAD -- script/download-onprem-deps.ts script/package-onprem-bundle.ts packages/opencode/src/onprem/index.ts script/onprem-plugins.json script/onprem-plugins.schema.json > patches/0001-add-onprem-module-and-scripts.patch
-git diff HEAD~1 HEAD -- packages/opencode/src/flag/flag.ts packages/opencode/src/file/ripgrep.ts packages/opencode/src/provider/models.ts packages/opencode/src/server/server.ts packages/opencode/package.json > patches/0002-modify-source-files.patch
+git diff HEAD~1 HEAD -- packages/opencode/src/flag/flag.ts packages/opencode/src/file/ripgrep.ts packages/opencode/src/provider/models.ts packages/opencode/src/server/instance.ts packages/opencode/package.json > patches/0002-modify-source-files.patch
 git diff HEAD~1 HEAD -- packages/opencode/src/lsp/server.ts > patches/lsp-server-onprem.patch
 git diff HEAD~1 HEAD -- packages/opencode/parsers-config.ts > patches/parsers-config-onprem.patch
 git diff HEAD~1 HEAD -- packages/opencode/src/bun/index.ts > patches/plugins-onprem.patch
@@ -330,6 +334,10 @@ git diff HEAD~1 HEAD -- packages/opencode/src/bun/index.ts > patches/plugins-onp
 | Terraform-LS | HashiCorp Releases | `deps/lsp/terraform-ls/terraform-ls` |
 | TexLab | GitHub Releases | `deps/lsp/texlab/bin/texlab` |
 | Tinymist | GitHub Releases | `deps/lsp/tinymist/bin/tinymist` |
+| Kotlin-LS | GitHub Releases | `deps/lsp/kotlin-ls/bin/kotlin-lsp.sh` |
+| JDTLS | Eclipse Downloads | `deps/lsp/jdtls/` |
+| VSCode-ESLint | GitHub Releases | `deps/lsp/vscode-eslint/server/out/eslintServer.js` |
+| Elixir-LS | GitHub Releases | `deps/lsp/elixir-ls-master/release/language_server.sh` |
 
 ### NPM-based LSPs
 
@@ -380,13 +388,10 @@ manifest.json 会记录已安装插件的版本信息。
 
 ## 跳过的 LSP
 
-以下 LSP 因依赖复杂运行时环境而跳过：
+以下 LSP 因依赖复杂运行时环境或尚未实现自动下载而跳过：
 
 | LSP | 原因 |
 |-----|------|
-| ElixirLS | 需要 Elixir 运行时 |
-| Kotlin LSP | 需要 JetBrains CDN |
-| jdtls | 需要 Java 21+ |
 | Haskell LS | 需要 GHC |
 | Gleam LS | 需要 gleam 安装 |
 | Clojure LS | 需要 clojure-lsp 安装 |

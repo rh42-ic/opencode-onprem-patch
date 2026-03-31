@@ -168,6 +168,10 @@ ${variantNote}
     - \`terraform-ls/\` - Terraform language server
     - \`texlab/\` - LaTeX language server
     - \`tinymist/\` - Typst language server
+    - \`kotlin-ls/\` - Kotlin language server
+    - \`jdtls/\` - Java language server
+    - \`vscode-eslint/\` - ESLint server
+    - \`elixir-ls-master/\` - Elixir language server
   - \`node_modules/\` - npm packages for language servers
   - \`tree-sitter/\` - Tree-sitter parsers for syntax highlighting
     - \`wasm/\` - WASM parser files
@@ -244,6 +248,10 @@ These language servers are included and work without network access:
 | Terraform/HCL | terraform-ls |
 | LaTeX | texlab |
 | Typst | tinymist |
+| Kotlin | kotlin-ls |
+| Java | jdtls |
+| ESLint | vscode-eslint |
+| Elixir | elixir-ls |
 
 ### Requires language runtime
 
