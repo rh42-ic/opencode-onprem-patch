@@ -1,7 +1,7 @@
 {
-  "version": "1.3.5",
-  "base": "opencode-1.3.5",
-  "created": "2026-03-30",
+  "version": "1.3.9",
+  "base": "opencode-1.3.9",
+  "created": "2026-03-31",
   "modifications": [
     {
       "file": "packages/opencode/src/onprem/index.ts",
@@ -70,7 +70,7 @@
     {
       "file": "packages/opencode/src/lsp/server.ts",
       "action": "modify",
-      "description": "Add offline LSP path checks for all supported LSPs (TypeScript, Pyright, Vue, PHP/Intelephense, Bash, Svelte, Astro, Yaml, Dockerfile, Rust-analyzer, Clangd, ZLS, LuaLS, TerraformLS, TexLab, Tinymist)",
+      "description": "Add offline LSP path checks for all supported LSPs (TypeScript, Pyright, Vue, PHP/Intelephense, Bash, Svelte, Astro, Yaml, Dockerfile, Rust-analyzer, Clangd, ZLS, LuaLS, TerraformLS, TexLab, Tinymist, Oxlint, Biome, Prisma)",
       "search_marker": "// onprem-fork:",
       "patch": "lsp-server-onprem.patch"
     },
@@ -135,6 +135,9 @@
     "node_modules/@vue/language-server/": "Vue Language Server npm package",
     "node_modules/intelephense/": "PHP Intelephense npm package",
     "node_modules/bash-language-server/": "Bash Language Server npm package",
+    "node_modules/oxlint/": "Oxlint npm package",
+    "node_modules/@biomejs/biome/": "Biome npm package",
+    "node_modules/prisma/": "Prisma npm package",
     "plugins/node_modules/": "Offline plugins (configured via onprem-plugins.json)",
     "plugins/package.json": "Bun-generated package.json with installed plugin versions",
     "manifest.json": "Bundle manifest including plugin versions in 'plugins' field",
@@ -165,7 +168,10 @@
       "dockerfile-language-server-nodejs (Dockerfile)",
       "@vue/language-server (Vue)",
       "intelephense (PHP)",
-      "bash-language-server (Bash)"
+      "bash-language-server (Bash)",
+      "oxlint (Oxlint)",
+      "biome (Biome)",
+      "prisma (Prisma)"
     ],
     "tree_sitter_parsers": [
       "python", "rust", "go", "cpp", "csharp", "bash", "c", "java",

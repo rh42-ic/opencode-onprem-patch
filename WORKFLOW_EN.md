@@ -73,13 +73,13 @@ Modifies `packages/opencode/src/lsp/server.ts`, adding offline path checks for t
 - vscode-eslint (ESLint)
 - elixir-ls (Elixir)
 
-**NPM-based LSPs:**
-- typescript-language-server
-- pyright
-- svelte-language-server
-- @astrojs/language-server
-- yaml-language-server
-- dockerfile-language-server-nodejs
+**NPM-based LSPs (12):**
+- typescript-language-server, pyright
+- svelte-language-server, @astrojs/language-server
+- yaml-language-server, dockerfile-language-server-nodejs
+- @vue/language-server, intelephense, bash-language-server
+- oxlint, biome, prisma
+
 
 ### parsers-config-onprem.patch
 
@@ -307,7 +307,7 @@ bun run script/download-onprem-deps.ts --plugins-only
 ### 3. Package Offline Bundle
 
 ```bash
-OPENCODE_VERSION=1.3.5 bun run script/package-onprem-bundle.ts
+OPENCODE_VERSION=1.3.9 bun run script/package-onprem-bundle.ts
 ```
 
 > **Note:** The `OPENCODE_VERSION` environment variable sets the compiled version number.
@@ -371,6 +371,12 @@ git diff HEAD~1 HEAD -- packages/opencode/src/bun/index.ts packages/opencode/src
 | Astro LSP | `deps/node_modules/@astrojs/language-server/` |
 | YAML LSP | `deps/node_modules/yaml-language-server/` |
 | Dockerfile LSP | `deps/node_modules/dockerfile-language-server-nodejs/` |
+| Vue LSP | `deps/node_modules/@vue/language-server/` |
+| Intelephense (PHP) | `deps/node_modules/intelephense/` |
+| Bash LSP | `deps/node_modules/bash-language-server/` |
+| Oxlint | `deps/node_modules/oxlint/` |
+| Biome | `deps/node_modules/@biomejs/biome/` |
+| Prisma | `deps/node_modules/prisma/` |
 
 ### Tree-sitter Parsers (WASM)
 

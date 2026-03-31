@@ -80,7 +80,7 @@ bun run script/download-onprem-deps.ts --plugins-only
 ### 3. 打包
 
 ```bash
-OPENCODE_VERSION=1.3.5 bun run script/package-onprem-bundle.ts
+OPENCODE_VERSION=1.3.9 bun run script/package-onprem-bundle.ts
 ```
 
 > **注意：** `OPENCODE_VERSION` 环境变量用于设置编译后的版本号。
@@ -131,11 +131,12 @@ cd opencode-onprem-linux-x64-baseline
 - terraform-ls, texlab, tinymist, kotlin-ls
 - jdtls, vscode-eslint, elixir-ls
 
-**NPM-based LSPs (9个):**
+**NPM-based LSPs (12个):**
 - typescript-language-server, pyright
 - svelte-language-server, @astrojs/language-server
 - yaml-language-server, dockerfile-language-server-nodejs
 - @vue/language-server, intelephense, bash-language-server
+- oxlint, biome, prisma
 
 ### parsers-config-onprem.patch
 
@@ -177,6 +178,9 @@ cd opencode-onprem-linux-x64-baseline
 | @vue/language-server | Vue |
 | intelephense | PHP |
 | bash-language-server | Bash |
+| oxlint | Oxlint |
+| biome | Biome |
+| prisma | Prisma |
 
 ### Tree-sitter Parsers
 
@@ -231,7 +235,10 @@ deps/
 │   ├── dockerfile-language-server-nodejs/
 │   ├── @vue/language-server/
 │   ├── intelephense/
-│   └── bash-language-server/
+│   ├── bash-language-server/
+│   ├── oxlint/
+│   ├── @biomejs/biome/
+│   └── prisma/
 ├── plugins/                         # 离线插件目录(可选)
 │   ├── package.json                # bun install 生成
 │   └── node_modules/

@@ -1,3 +1,12 @@
+From 74cd0d051bbf111ef3850ab4934690061a622697 Mon Sep 17 00:00:00 2001
+From: RH42-IC <chensy.ic@foxmail.com>
+Date: Tue, 31 Mar 2026 13:35:01 +0000
+Subject: [PATCH 5/5] onprem: add offline plugin detection in BunProc.install()
+
+---
+ packages/opencode/src/bun/index.ts | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
 diff --git a/packages/opencode/src/bun/index.ts b/packages/opencode/src/bun/index.ts
 index dbdf5a2..24463cd 100644
 --- a/packages/opencode/src/bun/index.ts
@@ -26,3 +35,6 @@ index dbdf5a2..24463cd 100644
      // Use lock to ensure only one install at a time
      using _ = await Lock.write("bun-install")
  
+-- 
+2.43.0
+

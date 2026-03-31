@@ -252,6 +252,9 @@ These language servers are included and work without network access:
 | Java | jdtls |
 | ESLint | vscode-eslint |
 | Elixir | elixir-ls |
+| Oxlint | oxlint |
+| Biome | biome |
+| Prisma | prisma |
 
 ### Requires language runtime
 

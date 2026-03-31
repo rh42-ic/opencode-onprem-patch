@@ -1,3 +1,21 @@
+From daf69de76f40bb39082cebea8727db92240efafd Mon Sep 17 00:00:00 2001
+From: RH42-IC <chensy.ic@foxmail.com>
+Date: Tue, 31 Mar 2026 13:35:00 +0000
+Subject: [PATCH 1/5] onprem: add onprem module and scripts
+
+---
+ packages/opencode/src/onprem/index.ts |  84 +++
+ script/download-onprem-deps.ts        | 996 ++++++++++++++++++++++++++
+ script/onprem-plugins.json            |  10 +
+ script/onprem-plugins.schema.json     |  21 +
+ script/package-onprem-bundle.ts       | 383 ++++++++++
+ 5 files changed, 1494 insertions(+)
+ create mode 100644 packages/opencode/src/onprem/index.ts
+ create mode 100644 script/download-onprem-deps.ts
+ create mode 100644 script/onprem-plugins.json
+ create mode 100644 script/onprem-plugins.schema.json
+ create mode 100644 script/package-onprem-bundle.ts
+
 diff --git a/packages/opencode/src/onprem/index.ts b/packages/opencode/src/onprem/index.ts
 new file mode 100644
 index 0000000..c42c3b8
@@ -91,10 +109,10 @@ index 0000000..c42c3b8
 \ No newline at end of file
 diff --git a/script/download-onprem-deps.ts b/script/download-onprem-deps.ts
 new file mode 100644
-index 0000000..990df81
+index 0000000..705eabc
 --- /dev/null
 +++ b/script/download-onprem-deps.ts
-@@ -0,0 +1,993 @@
+@@ -0,0 +1,996 @@
 +#!/usr/bin/env bun
 +
 +import { $ } from "bun"
@@ -240,8 +258,8 @@ index 0000000..990df81
 +    tinymist?: string
 +    kotlin?: string
 +    jdtls?: string
-+    eslint?: string
-+    elixir?: string
++    vscodeEslint?: string
++    elixirLs?: string
 +    treeSitterWasm: string[]
 +    npmPackages: Record<string, string>
 +    plugins?: Record<string, string>
@@ -859,6 +877,9 @@ index 0000000..990df81
 +    "@vue/language-server",
 +    "intelephense",
 +    "bash-language-server",
++    "oxlint",
++    "@biomejs/biome",
++    "prisma",
 +  ]
 +
 +  const pkgJsonPath = path.join(DEPS_DIR, "package.json")
@@ -1136,10 +1157,10 @@ index 0000000..49762f1
 \ No newline at end of file
 diff --git a/script/package-onprem-bundle.ts b/script/package-onprem-bundle.ts
 new file mode 100644
-index 0000000..a413b04
+index 0000000..3cb7565
 --- /dev/null
 +++ b/script/package-onprem-bundle.ts
-@@ -0,0 +1,380 @@
+@@ -0,0 +1,383 @@
 +#!/usr/bin/env bun
 +
 +import { $ } from "bun"
@@ -1394,6 +1415,9 @@ index 0000000..a413b04
 +| Java | jdtls |
 +| ESLint | vscode-eslint |
 +| Elixir | elixir-ls |
++| Oxlint | oxlint |
++| Biome | biome |
++| Prisma | prisma |
 +
 +### Requires language runtime
 +
@@ -1521,3 +1545,6 @@ index 0000000..a413b04
 +  process.exit(1)
 +})
 \ No newline at end of file
+-- 
+2.43.0
+

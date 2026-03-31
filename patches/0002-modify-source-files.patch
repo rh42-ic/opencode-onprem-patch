@@ -1,3 +1,15 @@
+From f7dfce0a66063b3eb4312067c8d1590a0b57e432 Mon Sep 17 00:00:00 2001
+From: RH42-IC <chensy.ic@foxmail.com>
+Date: Tue, 31 Mar 2026 13:35:00 +0000
+Subject: [PATCH 2/5] onprem: modify source files for onprem mode
+
+---
+ packages/opencode/src/file/ripgrep.ts    | 15 ++++++++++++
+ packages/opencode/src/flag/flag.ts       |  4 ++++
+ packages/opencode/src/provider/models.ts | 29 +++++++++++++++++++++++-
+ packages/opencode/src/server/instance.ts |  7 ++++++
+ 4 files changed, 54 insertions(+), 1 deletion(-)
+
 diff --git a/packages/opencode/src/file/ripgrep.ts b/packages/opencode/src/file/ripgrep.ts
 index 601c82e..ee0029c 100644
 --- a/packages/opencode/src/file/ripgrep.ts
@@ -132,3 +144,6 @@ index 4bb6efa..5c1f39b 100644
        const embeddedWebUI = await embeddedUIPromise
        const path = c.req.path
  
+-- 
+2.43.0
+

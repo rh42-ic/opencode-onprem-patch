@@ -1,3 +1,13 @@
+From 33b307db5b46995456e9cc34bf3b4f8b046e16ec Mon Sep 17 00:00:00 2001
+From: RH42-IC <chensy.ic@foxmail.com>
+Date: Tue, 31 Mar 2026 13:35:01 +0000
+Subject: [PATCH 4/5] onprem: support loading tree-sitter parsers from local
+ deps
+
+---
+ packages/opencode/parsers-config.ts | 581 +++++++++++++++-------------
+ 1 file changed, 317 insertions(+), 264 deletions(-)
+
 diff --git a/packages/opencode/parsers-config.ts b/packages/opencode/parsers-config.ts
 index b4951af..1268838 100644
 --- a/packages/opencode/parsers-config.ts
@@ -611,3 +621,6 @@ index b4951af..1268838 100644
 +  },
 +}
 \ No newline at end of file
+-- 
+2.43.0
+

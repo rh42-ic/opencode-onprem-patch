@@ -143,8 +143,8 @@ interface Manifest {
     tinymist?: string
     kotlin?: string
     jdtls?: string
-    eslint?: string
-    elixir?: string
+    vscodeEslint?: string
+    elixirLs?: string
     treeSitterWasm: string[]
     npmPackages: Record<string, string>
     plugins?: Record<string, string>
@@ -762,6 +762,9 @@ async function installNpmPackages(): Promise<Record<string, string>> {
     "@vue/language-server",
     "intelephense",
     "bash-language-server",
+    "oxlint",
+    "@biomejs/biome",
+    "prisma",
   ]
 
   const pkgJsonPath = path.join(DEPS_DIR, "package.json")

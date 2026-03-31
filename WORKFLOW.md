@@ -87,6 +87,9 @@ git apply /path/to/opencode-onprem-patch/patches/plugins-onprem.patch
 - @vue/language-server
 - intelephense (PHP)
 - bash-language-server
+- oxlint
+- biome
+- prisma
 
 ### parsers-config-onprem.patch
 
@@ -286,7 +289,7 @@ bun run script/download-onprem-deps.ts --plugins-only
 ### 3. 打包离线 bundle
 
 ```bash
-OPENCODE_VERSION=1.3.5 bun run script/package-onprem-bundle.ts
+OPENCODE_VERSION=1.3.9 bun run script/package-onprem-bundle.ts
 ```
 
 > **注意：** `OPENCODE_VERSION` 环境变量用于设置编译后的版本号。
@@ -353,6 +356,9 @@ git diff HEAD~1 HEAD -- packages/opencode/src/bun/index.ts > patches/plugins-onp
 | Vue LSP | `deps/node_modules/@vue/language-server/` |
 | Intelephense (PHP) | `deps/node_modules/intelephense/` |
 | Bash LSP | `deps/node_modules/bash-language-server/` |
+| Oxlint | `deps/node_modules/oxlint/` |
+| Biome | `deps/node_modules/@biomejs/biome/` |
+| Prisma | `deps/node_modules/prisma/` |
 
 ### Tree-sitter Parsers (WASM)
 
