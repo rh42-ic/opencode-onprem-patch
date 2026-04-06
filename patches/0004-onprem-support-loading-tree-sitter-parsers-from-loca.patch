@@ -1,6 +1,6 @@
-From 33b307db5b46995456e9cc34bf3b4f8b046e16ec Mon Sep 17 00:00:00 2001
+From 086e351473dfa74daec83533c83f588b44c1b06c Mon Sep 17 00:00:00 2001
 From: RH42-IC <chensy.ic@foxmail.com>
-Date: Tue, 31 Mar 2026 13:35:01 +0000
+Date: Sun, 5 Apr 2026 21:38:53 +0800
 Subject: [PATCH 4/5] onprem: support loading tree-sitter parsers from local
  deps
 
@@ -9,7 +9,7 @@ Subject: [PATCH 4/5] onprem: support loading tree-sitter parsers from local
  1 file changed, 317 insertions(+), 264 deletions(-)
 
 diff --git a/packages/opencode/parsers-config.ts b/packages/opencode/parsers-config.ts
-index b4951af..1268838 100644
+index b4951af..f7173e3 100644
 --- a/packages/opencode/parsers-config.ts
 +++ b/packages/opencode/parsers-config.ts
 @@ -1,290 +1,343 @@
@@ -572,7 +572,7 @@ index b4951af..1268838 100644
 +
 +    let wasm = parser.wasm
 +    if (existsSync(localWasmPath)) {
-+      wasm = `file://${localWasmPath}`
++      wasm = localWasmPath
 +    }
 +
 +    const queries: ParserConfig["queries"] = {
@@ -581,13 +581,13 @@ index b4951af..1268838 100644
 +    
 +    const localHighlightsPath = path.join(depsPath, "tree-sitter", "queries", parser.filetype, "highlights.scm")
 +    if (existsSync(localHighlightsPath)) {
-+      queries.highlights = [`file://${localHighlightsPath}`]
++      queries.highlights = [localHighlightsPath]
 +    }
 +    
 +    if (parser.queries.locals) {
 +      const localPath = path.join(depsPath, "tree-sitter", "queries", parser.filetype, "locals.scm")
 +      if (existsSync(localPath)) {
-+        queries.locals = [`file://${localPath}`]
++        queries.locals = [localPath]
 +      } else {
 +        queries.locals = parser.queries.locals
 +      }
@@ -595,7 +595,7 @@ index b4951af..1268838 100644
 +    if (parser.queries.injections) {
 +      const localPath = path.join(depsPath, "tree-sitter", "queries", parser.filetype, "injections.scm")
 +      if (existsSync(localPath)) {
-+        queries.injections = [`file://${localPath}`]
++        queries.injections = [localPath]
 +      } else {
 +        queries.injections = parser.queries.injections
 +      }
@@ -622,5 +622,5 @@ index b4951af..1268838 100644
 +}
 \ No newline at end of file
 -- 
-2.43.0
+2.47.3
 

@@ -4,7 +4,8 @@ import { $ } from "bun"
 import fs from "fs/promises"
 import path from "path"
 
-const DEPS_DIR = "dist/onprem-deps"
+let DEPS_DIR = "dist/onprem-deps"
+let TARGET_PLATFORM = "linux-x64"
 const RIPGREP_VERSION = "14.1.1"
 
 // Tree-sitter WASM versions and sources
@@ -315,16 +316,20 @@ async function downloadEslint() {
   console.log("\n=== Downloading VS Code ESLint server ===")
 
   try {
-    const dist = path.join(DEPS_DIR, "lsp", "vscode-eslint")
+    const url = "https://open-vsx.org/api/dbaeumer/vscode-eslint/linux-x64/2.4.4/file" // fallback or dynamic, let's use the main latest vsix
+    const res = await fetch("https://open-vsx.org/api/dbaeumer/vscode-eslint/latest")
+    const data = await res.json()
+    const downloadUrl = data.files.download
     const archive = path.join(DEPS_DIR, "eslint.zip")
-    await downloadFile("https://github.com/microsoft/vscode-eslint/archive/refs/heads/main.zip", archive)
-    await extractZip(archive, path.join(DEPS_DIR, "lsp"))
+    await downloadFile(downloadUrl, archive)
+    const tempDir = path.join(DEPS_DIR, "lsp", "vscode-eslint-temp")
+    await fs.mkdir(tempDir, { recursive: true })
+    await extractZip(archive, tempDir)
     await fs.unlink(archive)
-    const src = path.join(DEPS_DIR, "lsp", "vscode-eslint-main")
-    await fs.rename(src, dist)
-    await Bun.spawn(["npm", "install"], { cwd: dist }).exited
-    await Bun.spawn(["npm", "run", "compile"], { cwd: dist }).exited
-    return "main"
+    const dist = path.join(DEPS_DIR, "lsp", "vscode-eslint")
+    await fs.rename(path.join(tempDir, "extension"), dist)
+    await fs.rm(tempDir, { recursive: true, force: true })
+    return data.version
   } catch (err) {
     return
   }
@@ -334,16 +339,18 @@ async function downloadElixir() {
   console.log("\n=== Downloading ElixirLS ===")
 
   try {
+    const res = await fetch("https://api.github.com/repos/elixir-lsp/elixir-ls/releases/latest")
+    if (!res.ok) return
+    const release = await res.json()
+    const asset = release.assets.find((a: any) => a.name.endsWith(".zip"))
+    if (!asset) return
     const archive = path.join(DEPS_DIR, "elixir-ls.zip")
-    await downloadFile("https://github.com/elixir-lsp/elixir-ls/archive/refs/heads/master.zip", archive)
-    await extractZip(archive, path.join(DEPS_DIR, "lsp"))
-    await fs.unlink(archive)
+    await downloadFile(asset.browser_download_url, archive)
     const dist = path.join(DEPS_DIR, "lsp", "elixir-ls-master")
-    const env = { MIX_ENV: "prod", ...process.env }
-    await Bun.spawn(["mix", "deps.get"], { cwd: dist, env }).exited
-    await Bun.spawn(["mix", "compile"], { cwd: dist, env }).exited
-    await Bun.spawn(["mix", "elixir_ls.release2", "-o", "release"], { cwd: dist, env }).exited
-    return "master"
+    await fs.mkdir(dist, { recursive: true })
+    await extractZip(archive, dist)
+    await fs.unlink(archive)
+    return release.tag_name
   } catch (err) {
     return
   }
@@ -351,8 +358,10 @@ async function downloadElixir() {
 
 async function downloadRipgrep(): Promise<string> {
   console.log("\n=== Downloading ripgrep ===")
-  const platform = "x86_64-unknown-linux-musl"
-  const filename = `ripgrep-${RIPGREP_VERSION}-${platform}.tar.gz`
+  const platform = TARGET_PLATFORM === "windows-x64" ? "x86_64-pc-windows-msvc" : "x86_64-unknown-linux-musl"
+  const filename = TARGET_PLATFORM === "windows-x64" 
+    ? `ripgrep-${RIPGREP_VERSION}-${platform}.zip`
+    : `ripgrep-${RIPGREP_VERSION}-${platform}.tar.gz`
   const url = `https://github.com/BurntSushi/ripgrep/releases/download/${RIPGREP_VERSION}/${filename}`
 
   const ripgrepDir = path.join(DEPS_DIR, "ripgrep")
@@ -361,10 +370,14 @@ async function downloadRipgrep(): Promise<string> {
   const archivePath = path.join(DEPS_DIR, filename)
   await downloadFile(url, archivePath)
 
-  await extractTarGz(archivePath, ripgrepDir, 1)
+  if (TARGET_PLATFORM === "windows-x64") {
+    await extractZip(archivePath, ripgrepDir)
+  } else {
+    await extractTarGz(archivePath, ripgrepDir, 1)
+  }
   await fs.unlink(archivePath)
 
-  await fs.chmod(path.join(ripgrepDir, "rg"), 0o755)
+  if (TARGET_PLATFORM !== "windows-x64") await fs.chmod(path.join(ripgrepDir, "rg"), 0o755)
 
   console.log("Ripgrep downloaded successfully")
   return RIPGREP_VERSION
@@ -380,9 +393,10 @@ async function downloadClangd(): Promise<string> {
   const release = await releaseResponse.json() as { tag_name: string; assets: { name: string; browser_download_url: string }[] }
   const tag = release.tag_name
 
-  const asset = release.assets.find(a => a.name.includes("linux") && a.name.includes(tag) && a.name.endsWith(".zip"))
+  const targetName = TARGET_PLATFORM === "windows-x64" ? "windows" : "linux"
+  const asset = release.assets.find(a => a.name.includes(targetName) && a.name.includes(tag) && a.name.endsWith(".zip"))
   if (!asset) {
-    throw new Error("Could not find clangd Linux asset")
+    throw new Error(`Could not find clangd ${targetName} asset`)
   }
 
   const clangdDir = path.join(DEPS_DIR, "lsp", "clangd")
@@ -400,7 +414,7 @@ async function downloadClangd(): Promise<string> {
   await fs.rm(finalDir, { recursive: true, force: true })
   await fs.rename(extractedDir, finalDir)
 
-  await fs.chmod(path.join(finalDir, "bin", "clangd"), 0o755)
+  if (TARGET_PLATFORM !== "windows-x64") await fs.chmod(path.join(finalDir, "bin", "clangd"), 0o755)
 
   console.log(`Clangd ${tag} downloaded successfully`)
   return tag
@@ -424,9 +438,10 @@ async function downloadRustAnalyzer(): Promise<string> {
     const release = await releaseResponse.json() as { tag_name: string; assets: { name: string; browser_download_url: string }[] }
     tag = release.tag_name
 
-    const asset = release.assets.find(a => a.name === "rust-analyzer-x86_64-unknown-linux-gnu.gz")
+    const assetName = TARGET_PLATFORM === "windows-x64" ? "rust-analyzer-x86_64-pc-windows-msvc.zip" : "rust-analyzer-x86_64-unknown-linux-gnu.gz"
+    const asset = release.assets.find(a => a.name === assetName)
     if (!asset) {
-      throw new Error("Could not find rust-analyzer Linux asset")
+      throw new Error(`Could not find rust-analyzer ${assetName} asset`)
     }
     downloadUrl = asset.browser_download_url
   }
@@ -434,22 +449,29 @@ async function downloadRustAnalyzer(): Promise<string> {
   const raDir = path.join(DEPS_DIR, "lsp", "rust-analyzer", "bin")
   await fs.mkdir(raDir, { recursive: true })
 
-  const archivePath = path.join(DEPS_DIR, "rust-analyzer.gz")
+  const archiveExt = TARGET_PLATFORM === "windows-x64" ? ".zip" : ".gz"
+  const archivePath = path.join(DEPS_DIR, `rust-analyzer${archiveExt}`)
   await downloadFile(downloadUrl, archivePath)
 
-  const proc = Bun.spawn(["gunzip", "-c", archivePath], {
-    stdout: "pipe",
-    stderr: "pipe",
-  })
-  const binaryData = await Bun.readableStreamToArrayBuffer(proc.stdout)
-  await proc.exited
-  if (proc.exitCode !== 0) {
-    throw new Error("Failed to extract rust-analyzer")
+  if (TARGET_PLATFORM === "windows-x64") {
+    await extractZip(archivePath, raDir)
+  } else {
+    const proc = Bun.spawn(["gunzip", "-c", archivePath], {
+      stdout: "pipe",
+      stderr: "pipe",
+    })
+    const binaryData = await Bun.readableStreamToArrayBuffer(proc.stdout)
+    await proc.exited
+    if (proc.exitCode !== 0) {
+      throw new Error("Failed to extract rust-analyzer")
+    }
+
+    const binaryPath = path.join(raDir, "rust-analyzer")
+    await Bun.write(binaryPath, binaryData)
   }
 
-  const binaryPath = path.join(raDir, "rust-analyzer")
-  await Bun.write(binaryPath, binaryData)
-  await fs.chmod(binaryPath, 0o755)
+  const binaryPath = path.join(raDir, TARGET_PLATFORM === "windows-x64" ? "rust-analyzer.exe" : "rust-analyzer")
+  if (TARGET_PLATFORM !== "windows-x64") await fs.chmod(binaryPath, 0o755)
 
   await fs.unlink(archivePath)
 
@@ -469,28 +491,34 @@ async function downloadZls(): Promise<string | undefined> {
     const release = await releaseResponse.json() as { tag_name: string; assets: { name: string; browser_download_url: string }[] }
     const tag = release.tag_name
 
-    const asset = release.assets.find((a: any) => a.name === "zls-x86_64-linux.tar.xz")
+    const assetName = TARGET_PLATFORM === "windows-x64" ? "zls-x86_64-windows.zip" : "zls-x86_64-linux.tar.xz"
+    const asset = release.assets.find((a: any) => a.name === assetName)
     if (!asset) {
-      console.log("Could not find ZLS Linux asset, skipping")
+      console.log(`Could not find ZLS ${assetName} asset, skipping`)
       return undefined
     }
 
     const zlsDir = path.join(DEPS_DIR, "lsp", "zls", "bin")
     await fs.mkdir(zlsDir, { recursive: true })
 
-    const archivePath = path.join(DEPS_DIR, "zls.tar.xz")
+    const archiveExt = TARGET_PLATFORM === "windows-x64" ? ".zip" : ".tar.xz"
+    const archivePath = path.join(DEPS_DIR, `zls${archiveExt}`)
     await downloadFile(asset.browser_download_url, archivePath)
 
-    await extractTarXz(archivePath, path.join(DEPS_DIR, "lsp", "zls"))
+    if (TARGET_PLATFORM === "windows-x64") {
+      await extractZip(archivePath, path.join(DEPS_DIR, "lsp", "zls"))
+    } else {
+      await extractTarXz(archivePath, path.join(DEPS_DIR, "lsp", "zls"))
+    }
 
-    const binaryPath = path.join(DEPS_DIR, "lsp", "zls", "zls")
-    const finalPath = path.join(zlsDir, "zls")
+    const binaryPath = path.join(DEPS_DIR, "lsp", "zls", TARGET_PLATFORM === "windows-x64" ? "zls.exe" : "zls")
+    const finalPath = path.join(zlsDir, TARGET_PLATFORM === "windows-x64" ? "zls.exe" : "zls")
     
     if (await fs.stat(binaryPath).catch(() => null)) {
       await fs.rename(binaryPath, finalPath)
     }
     
-    await fs.chmod(finalPath, 0o755)
+    if (TARGET_PLATFORM !== "windows-x64") await fs.chmod(finalPath, 0o755)
     await fs.unlink(archivePath)
 
     console.log(`ZLS ${tag} downloaded successfully`)
@@ -513,28 +541,35 @@ async function downloadLuaLanguageServer(): Promise<string | undefined> {
     const release = await releaseResponse.json() as { tag_name: string; assets: { name: string; browser_download_url: string }[] }
     const tag = release.tag_name
 
-    const asset = release.assets.find((a: any) => a.name.includes("linux-x64") && a.name.endsWith(".tar.gz"))
+    const assetName = TARGET_PLATFORM === "windows-x64" ? "win32-x64" : "linux-x64"
+    const assetExt = TARGET_PLATFORM === "windows-x64" ? ".zip" : ".tar.gz"
+    const asset = release.assets.find((a: any) => a.name.includes(assetName) && a.name.endsWith(assetExt))
     if (!asset) {
-      console.log("Could not find Lua LS Linux asset, skipping")
+      console.log(`Could not find Lua LS ${assetName} asset, skipping`)
       return undefined
     }
 
     const luaLsDir = path.join(DEPS_DIR, "lsp", "lua-language-server")
     await fs.mkdir(luaLsDir, { recursive: true })
 
-    const archivePath = path.join(DEPS_DIR, "lua-language-server.tar.gz")
+    const archivePath = path.join(DEPS_DIR, `lua-language-server${assetExt}`)
     await downloadFile(asset.browser_download_url, archivePath)
 
-    await extractTarGz(archivePath, luaLsDir, 1)
+    if (TARGET_PLATFORM === "windows-x64") {
+      await extractZip(archivePath, luaLsDir)
+    } else {
+      await extractTarGz(archivePath, luaLsDir, 1)
+    }
 
     // The binary is at root level, make it executable
-    const binPath = path.join(luaLsDir, "bin", "lua-language-server")
-    const rootBinaryPath = path.join(luaLsDir, "lua-language-server")
+    const binName = TARGET_PLATFORM === "windows-x64" ? "lua-language-server.exe" : "lua-language-server"
+    const binPath = path.join(luaLsDir, "bin", binName)
+    const rootBinaryPath = path.join(luaLsDir, binName)
     
     // Check both locations for the binary
-    if (await fs.stat(binPath).catch(() => null)) {
-      await fs.chmod(binPath, 0o755)
-    } else if (await fs.stat(rootBinaryPath).catch(() => null)) {
+    if (TARGET_PLATFORM !== "windows-x64" && await fs.stat(binPath).catch(() => null)) {
+      if (TARGET_PLATFORM !== "windows-x64") await fs.chmod(binPath, 0o755)
+    } else if (TARGET_PLATFORM !== "windows-x64" && await fs.stat(rootBinaryPath).catch(() => null)) {
       await fs.chmod(rootBinaryPath, 0o755)
     }
 
@@ -559,9 +594,10 @@ async function downloadTerraformLs(): Promise<string | undefined> {
     }
     const release = await releaseResponse.json() as { version: string; builds: { arch: string; os: string; url: string }[] }
 
-    const build = release.builds.find((b: any) => b.os === "linux" && b.arch === "amd64")
+    const targetOs = TARGET_PLATFORM === "windows-x64" ? "windows" : "linux"
+    const build = release.builds.find((b: any) => b.os === targetOs && b.arch === "amd64")
     if (!build) {
-      console.log("Could not find terraform-ls Linux asset, skipping")
+      console.log(`Could not find terraform-ls ${targetOs} asset, skipping`)
       return undefined
     }
 
@@ -573,7 +609,7 @@ async function downloadTerraformLs(): Promise<string | undefined> {
 
     await extractZip(archivePath, tfLsDir)
 
-    const binPath = path.join(tfLsDir, "terraform-ls")
+    const binPath = path.join(tfLsDir, TARGET_PLATFORM === "windows-x64" ? "terraform-ls.exe" : "terraform-ls")
     await fs.chmod(binPath, 0o755)
 
     await fs.unlink(archivePath)
@@ -598,33 +634,39 @@ async function downloadTexlab(): Promise<string | undefined> {
     const release = await releaseResponse.json() as { tag_name: string; assets: { name: string; browser_download_url: string }[] }
     const tag = release.tag_name
 
-    const asset = release.assets.find((a: any) => a.name === "texlab-x86_64-linux.tar.gz")
+    const assetName = TARGET_PLATFORM === "windows-x64" ? "texlab-x86_64-windows.zip" : "texlab-x86_64-linux.tar.gz"
+    const asset = release.assets.find((a: any) => a.name === assetName)
     if (!asset) {
-      console.log("Could not find TexLab Linux asset, skipping")
+      console.log(`Could not find TexLab ${assetName} asset, skipping`)
       return undefined
     }
 
     const texlabDir = path.join(DEPS_DIR, "lsp", "texlab", "bin")
     await fs.mkdir(texlabDir, { recursive: true })
 
-    const archivePath = path.join(DEPS_DIR, "texlab.tar.gz")
+    const archivePath = path.join(DEPS_DIR, TARGET_PLATFORM === "windows-x64" ? "texlab.zip" : "texlab.tar.gz")
     await downloadFile(asset.browser_download_url, archivePath)
 
     // Extract to temp dir first
     const tempDir = path.join(DEPS_DIR, "texlab_temp")
     await fs.mkdir(tempDir, { recursive: true })
-    await extractTarGz(archivePath, tempDir)
+    if (TARGET_PLATFORM === "windows-x64") {
+      await extractZip(archivePath, tempDir)
+    } else {
+      await extractTarGz(archivePath, tempDir)
+    }
 
     // Move binary to bin directory
-    const extractedBinary = path.join(tempDir, "texlab")
-    const finalBinary = path.join(texlabDir, "texlab")
+    const binName = TARGET_PLATFORM === "windows-x64" ? "texlab.exe" : "texlab"
+    const extractedBinary = path.join(tempDir, binName)
+    const finalBinary = path.join(texlabDir, binName)
     if (await fs.stat(extractedBinary).catch(() => null)) {
       await fs.rename(extractedBinary, finalBinary)
     }
 
     // Cleanup
     await fs.rm(tempDir, { recursive: true, force: true })
-    await fs.chmod(finalBinary, 0o755)
+    if (TARGET_PLATFORM !== "windows-x64") if (TARGET_PLATFORM !== "windows-x64") await fs.chmod(finalBinary, 0o755)
     await fs.unlink(archivePath)
 
     console.log(`TexLab ${tag} downloaded successfully`)
@@ -647,26 +689,32 @@ async function downloadTinymist(): Promise<string | undefined> {
     const release = await releaseResponse.json() as { tag_name: string; assets: { name: string; browser_download_url: string }[] }
     const tag = release.tag_name
 
-    const asset = release.assets.find((a: any) => a.name === "tinymist-x86_64-unknown-linux-gnu.tar.gz")
+    const assetName = TARGET_PLATFORM === "windows-x64" ? "tinymist-x86_64-pc-windows-msvc.zip" : "tinymist-x86_64-unknown-linux-gnu.tar.gz"
+    const asset = release.assets.find((a: any) => a.name === assetName)
     if (!asset) {
-      console.log("Could not find Tinymist Linux asset, skipping")
+      console.log(`Could not find Tinymist ${assetName} asset, skipping`)
       return undefined
     }
 
     const tinymistDir = path.join(DEPS_DIR, "lsp", "tinymist", "bin")
     await fs.mkdir(tinymistDir, { recursive: true })
 
-    const archivePath = path.join(DEPS_DIR, "tinymist.tar.gz")
+    const archivePath = path.join(DEPS_DIR, TARGET_PLATFORM === "windows-x64" ? "tinymist.zip" : "tinymist.tar.gz")
     await downloadFile(asset.browser_download_url, archivePath)
 
     // Extract to temp dir first
     const tempDir = path.join(DEPS_DIR, "tinymist_temp")
     await fs.mkdir(tempDir, { recursive: true })
-    await extractTarGz(archivePath, tempDir, 1) // strip-components=1 to get past the tinymist-xxx directory
+    if (TARGET_PLATFORM === "windows-x64") {
+      await extractZip(archivePath, tempDir)
+    } else {
+      await extractTarGz(archivePath, tempDir, 1)
+    } // strip-components=1 to get past the tinymist-xxx directory
 
     // Find and move the binary
-    const extractedBinary = path.join(tempDir, "tinymist")
-    const finalBinary = path.join(tinymistDir, "tinymist")
+    const binName = TARGET_PLATFORM === "windows-x64" ? "tinymist.exe" : "tinymist"
+    const extractedBinary = path.join(tempDir, binName)
+    const finalBinary = path.join(tinymistDir, binName)
     if (await fs.stat(extractedBinary).catch(() => null)) {
       await fs.rename(extractedBinary, finalBinary)
     }
@@ -770,7 +818,11 @@ async function installNpmPackages(): Promise<Record<string, string>> {
   const pkgJsonPath = path.join(DEPS_DIR, "package.json")
   await Bun.write(pkgJsonPath, JSON.stringify({ dependencies: {} }, null, 2))
 
-  const installCmd = ["bun", "add", "--cwd", DEPS_DIR, ...packages]
+  const installCmd = ["bun", "add", "--cwd", DEPS_DIR]
+  if (TARGET_PLATFORM === "windows-x64") {
+    installCmd.push("--os=win32", "--cpu=x64")
+  }
+  installCmd.push(...packages)
   console.log(`Running: ${installCmd.join(" ")}`)
 
   const proc = Bun.spawn(installCmd, {
@@ -880,82 +932,92 @@ async function createManifest(
 async function main() {
   const args = process.argv.slice(2)
   const pluginsOnly = args.includes("--plugins-only")
+  
+  const platformsArg = args.find(a => a.startsWith("--platforms="))
+  const platforms = platformsArg ? platformsArg.split("=")[1].split(",") : ["linux-x64", "windows-x64"]
 
   console.log("=== OpenCode Onprem Dependencies Downloader ===")
-  console.log(`Target directory: ${DEPS_DIR}`)
+  console.log(`Target platforms: ${platforms.join(", ")}`)
 
-  if (pluginsOnly) {
-    const depsExist = await fs.stat(DEPS_DIR).catch(() => null)
-    if (!depsExist) {
-      console.error(`Dependencies not found at ${DEPS_DIR}`)
-      console.error("Run full download first (without --plugins-only)")
-      process.exit(1)
+  for (const platform of platforms) {
+    TARGET_PLATFORM = platform
+    DEPS_DIR = `dist/onprem-deps-${TARGET_PLATFORM}`
+    console.log(`\n--- Processing platform: ${TARGET_PLATFORM} ---`)
+    console.log(`Target directory: ${DEPS_DIR}`)
+
+    if (pluginsOnly) {
+      const depsExist = await fs.stat(DEPS_DIR).catch(() => null)
+      if (!depsExist) {
+        console.error(`Dependencies not found at ${DEPS_DIR}`)
+        console.error("Run full download first (without --plugins-only)")
+        continue
+      }
+
+      const pluginList = await loadPluginsConfig()
+      const pluginVersions = await installPlugins(pluginList)
+      await updatePluginsManifest(pluginVersions)
+
+      console.log("\n=== Plugins download complete ===")
+      if (Object.keys(pluginVersions).length > 0) {
+        console.log(`Plugins saved to: ${DEPS_DIR}/plugins/node_modules/`)
+      }
+      continue
     }
+
+    await fs.rm(DEPS_DIR, { recursive: true, force: true })
+    await fs.mkdir(DEPS_DIR, { recursive: true })
+
+    const ripgrepVersion = await downloadRipgrep()
+    const clangdVersion = await downloadClangd()
+    const rustAnalyzerVersion = await downloadRustAnalyzer()
+    
+    const zlsVersion = await downloadZls()
+    const luaLsVersion = await downloadLuaLanguageServer()
+    const terraformLsVersion = await downloadTerraformLs()
+    const texlabVersion = await downloadTexlab()
+    const tinymistVersion = await downloadTinymist()
+    const kotlin = await downloadKotlin()
+    const jdtls = await downloadJdtls()
+    const eslint = await downloadEslint()
+    const elixir = await downloadElixir()
+    
+    const treeSitterWasm = await downloadTreeSitterWasm()
+    await downloadTreeSitterQueries()
+    
+    const npmVersions = await installNpmPackages()
+    await downloadModelsJson()
+    await buildWebApp()
+
+    await createManifest(
+      ripgrepVersion,
+      clangdVersion,
+      rustAnalyzerVersion,
+      zlsVersion,
+      luaLsVersion,
+      terraformLsVersion,
+      texlabVersion,
+      tinymistVersion,
+      kotlin,
+      jdtls,
+      eslint,
+      elixir,
+      treeSitterWasm,
+      npmVersions
+    )
 
     const pluginList = await loadPluginsConfig()
     const pluginVersions = await installPlugins(pluginList)
-    await updatePluginsManifest(pluginVersions)
-
-    console.log("\n=== Plugins download complete ===")
+    
     if (Object.keys(pluginVersions).length > 0) {
-      console.log(`Plugins saved to: ${DEPS_DIR}/plugins/node_modules/`)
+      const manifestPath = path.join(DEPS_DIR, "manifest.json")
+      const manifest = await Bun.file(manifestPath).json()
+      manifest.components.plugins = pluginVersions
+      await Bun.write(manifestPath, JSON.stringify(manifest, null, 2))
     }
-    return
+
+    console.log("\n=== Download complete for " + TARGET_PLATFORM + " ===")
+    console.log(`Dependencies saved to: ${DEPS_DIR}`)
   }
-
-  await fs.rm(DEPS_DIR, { recursive: true, force: true })
-  await fs.mkdir(DEPS_DIR, { recursive: true })
-
-  const ripgrepVersion = await downloadRipgrep()
-  const clangdVersion = await downloadClangd()
-  const rustAnalyzerVersion = await downloadRustAnalyzer()
-  
-  const zlsVersion = await downloadZls()
-  const luaLsVersion = await downloadLuaLanguageServer()
-  const terraformLsVersion = await downloadTerraformLs()
-  const texlabVersion = await downloadTexlab()
-  const tinymistVersion = await downloadTinymist()
-  const kotlin = await downloadKotlin()
-  const jdtls = await downloadJdtls()
-  const eslint = await downloadEslint()
-  const elixir = await downloadElixir()
-  
-  const treeSitterWasm = await downloadTreeSitterWasm()
-  await downloadTreeSitterQueries()
-  
-  const npmVersions = await installNpmPackages()
-  await downloadModelsJson()
-  await buildWebApp()
-
-  await createManifest(
-    ripgrepVersion,
-    clangdVersion,
-    rustAnalyzerVersion,
-    zlsVersion,
-    luaLsVersion,
-    terraformLsVersion,
-    texlabVersion,
-    tinymistVersion,
-    kotlin,
-    jdtls,
-    eslint,
-    elixir,
-    treeSitterWasm,
-    npmVersions
-  )
-
-  const pluginList = await loadPluginsConfig()
-  const pluginVersions = await installPlugins(pluginList)
-  
-  if (Object.keys(pluginVersions).length > 0) {
-    const manifestPath = path.join(DEPS_DIR, "manifest.json")
-    const manifest = await Bun.file(manifestPath).json()
-    manifest.components.plugins = pluginVersions
-    await Bun.write(manifestPath, JSON.stringify(manifest, null, 2))
-  }
-
-  console.log("\n=== Download complete ===")
-  console.log(`Dependencies saved to: ${DEPS_DIR}`)
 }
 
 async function updatePluginsManifest(pluginVersions: Record<string, string>): Promise<void> {

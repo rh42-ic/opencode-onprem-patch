@@ -4,12 +4,14 @@ import { $ } from "bun"
 import fs from "fs/promises"
 import path from "path"
 
-const DEPS_DIR = "dist/onprem-deps"
-const BUNDLE_BASE_NAME = "opencode-onprem-linux-x64"
+// Dynamic based on platform
+let DEPS_DIR = ""
+let BUNDLE_BASE_NAME = ""
 
 type BuildVariant = "normal" | "baseline"
 
 async function buildAll(): Promise<void> {
+  // Build handles all targets implicitly
   console.log("\n=== Building opencode (all targets) ===")
 
   console.log("Installing dependencies...")
@@ -39,10 +41,11 @@ async function buildAll(): Promise<void> {
   console.log("Build complete")
 }
 
-async function findBuildDir(variant: BuildVariant): Promise<string> {
+async function findBuildDir(platform: string, variant: BuildVariant): Promise<string> {
   const distDir = "packages/opencode/dist"
   const entries = await fs.readdir(distDir)
-  const targetName = variant === "baseline" ? "linux-x64-baseline" : "linux-x64"
+  const baseName = platform === "windows-x64" ? "windows-x64" : "linux-x64"
+  const targetName = variant === "baseline" ? `${baseName}-baseline` : baseName
   const matchDir = entries.find(e => 
     e.includes(targetName) && !e.includes("musl")
   )
@@ -54,7 +57,7 @@ async function findBuildDir(variant: BuildVariant): Promise<string> {
   return path.join(distDir, matchDir)
 }
 
-async function createBundle(buildDir: string, variant: BuildVariant): Promise<void> {
+async function createBundle(buildDir: string, platform: string, variant: BuildVariant): Promise<void> {
   const suffix = variant === "baseline" ? "-baseline" : ""
   const BUNDLE_DIR = `${BUNDLE_BASE_NAME}${suffix}`
   const bundlePath = path.join("dist", BUNDLE_DIR)
@@ -66,23 +69,28 @@ async function createBundle(buildDir: string, variant: BuildVariant): Promise<vo
   await fs.mkdir(path.join(bundlePath, "deps"), { recursive: true })
 
   console.log("Copying opencode binary...")
-  const binaryPath = path.join(buildDir, "bin", "opencode")
-  await fs.copyFile(binaryPath, path.join(bundlePath, "bin", "opencode"))
-  await fs.chmod(path.join(bundlePath, "bin", "opencode"), 0o755)
+  const binName = platform === "windows-x64" ? "opencode.exe" : "opencode"
+  const binaryPath = path.join(buildDir, "bin", binName)
+  await fs.copyFile(binaryPath, path.join(bundlePath, "bin", binName))
+  if (platform !== "windows-x64") await fs.chmod(path.join(bundlePath, "bin", binName), 0o755)
 
   console.log("Copying dependencies...")
-  await $`cp -r ${DEPS_DIR}/* ${path.join(bundlePath, "deps")}/`
+  await $`cp -rL ${DEPS_DIR}/* ${path.join(bundlePath, "deps")}/`
 
   console.log("Copying OpenTUI native library...")
-  const opentuiGlob = new Bun.Glob("node_modules/.bun/@opentui+core-linux-x64@*/node_modules/@opentui/core-linux-x64/libopentui.so")
+  const globPattern = platform === "windows-x64"
+    ? "node_modules/.bun/@opentui+core-win32-x64@*/node_modules/@opentui/core-win32-x64/opentui.dll"
+    : "node_modules/.bun/@opentui+core-linux-x64@*/node_modules/@opentui/core-linux-x64/libopentui.so"
+  const opentuiGlob = new Bun.Glob(globPattern)
   const opentuiMatches = Array.from(opentuiGlob.scanSync({ dot: true }))
   if (opentuiMatches.length === 0) {
-    throw new Error("Could not find OpenTUI native library - ensure @opentui/core-linux-x64 is installed")
+    throw new Error(`Could not find OpenTUI native library - ensure @opentui/core for ${platform} is installed`)
   }
   const opentuiSoPath = opentuiMatches[0]
   console.log(`Found OpenTUI at: ${opentuiSoPath}`)
   await fs.mkdir(path.join(bundlePath, "deps", "opentui"), { recursive: true })
-  await fs.copyFile(opentuiSoPath, path.join(bundlePath, "deps", "opentui", "libopentui.so"))
+  const soName = platform === "windows-x64" ? "opentui.dll" : "libopentui.so"
+  await fs.copyFile(opentuiSoPath, path.join(bundlePath, "deps", "opentui", soName))
 
   console.log("Creating manifest...")
   const manifestContent = await fs.readFile(path.join(DEPS_DIR, "manifest.json"), "utf-8")
@@ -93,13 +101,32 @@ async function createBundle(buildDir: string, variant: BuildVariant): Promise<vo
   console.log("Bundle created")
 }
 
-async function createWrapperScript(variant: BuildVariant): Promise<void> {
+async function createWrapperScript(platform: string, variant: BuildVariant): Promise<void> {
   const suffix = variant === "baseline" ? "-baseline" : ""
   const BUNDLE_DIR = path.join("dist", `${BUNDLE_BASE_NAME}${suffix}`)
 
+  
   console.log("Creating wrapper script...")
 
-  const wrapperScript = `#!/bin/bash
+  if (platform === "windows-x64") {
+    const wrapperScript = `@echo off
+REM OpenCode Onprem Wrapper Script
+REM Sets up environment variables for onprem mode and runs opencode
+
+set SCRIPT_DIR=%~dp0
+set SCRIPT_DIR=%SCRIPT_DIR:~0,-1%
+
+set OPENCODE_ONPREM_MODE=true
+set OPENCODE_ONPREM_DEPS_PATH=%SCRIPT_DIR%\\deps
+set OPENCODE_DISABLE_AUTOUPDATE=true
+set OPENCODE_DISABLE_LSP_DOWNLOAD=true
+set OPENCODE_DISABLE_MODELS_FETCH=true
+
+"%SCRIPT_DIR%\\bin\\opencode.exe" %*
+`
+    await Bun.write(path.join(BUNDLE_DIR, "opencode-onprem.bat"), wrapperScript)
+  } else {
+    const wrapperScript = `#!/bin/bash
 # OpenCode Onprem Wrapper Script
 # Sets up environment variables for onprem mode and runs opencode
 
@@ -113,16 +140,19 @@ export OPENCODE_DISABLE_MODELS_FETCH=true
 
 exec "\$SCRIPT_DIR/bin/opencode" "\$@"
 `
-
-  await Bun.write(path.join(BUNDLE_DIR, "opencode-onprem"), wrapperScript)
-  await fs.chmod(path.join(BUNDLE_DIR, "opencode-onprem"), 0o755)
+    await Bun.write(path.join(BUNDLE_DIR, "opencode-onprem"), wrapperScript)
+    await fs.chmod(path.join(BUNDLE_DIR, "opencode-onprem"), 0o755)
+  }
 }
 
-async function createEnvFile(variant: BuildVariant): Promise<void> {
+
+async function createEnvFile(platform: string, variant: BuildVariant): Promise<void> {
   const suffix = variant === "baseline" ? "-baseline" : ""
   const BUNDLE_DIR = path.join("dist", `${BUNDLE_BASE_NAME}${suffix}`)
 
   console.log("Creating env file...")
+
+  if (platform === "windows-x64") return // No simple env file for Windows batch yet
 
   const envContent = `# OpenCode Onprem Environment Variables
 # Source this file before running opencode:
@@ -141,7 +171,7 @@ export OPENCODE_DISABLE_MODELS_FETCH=true
   await Bun.write(path.join(BUNDLE_DIR, "opencode-onprem.env"), envContent)
 }
 
-async function createReadme(variant: BuildVariant): Promise<void> {
+async function createReadme(platform: string, variant: BuildVariant): Promise<void> {
   const suffix = variant === "baseline" ? "-baseline" : ""
   const BUNDLE_DIR = path.join("dist", `${BUNDLE_BASE_NAME}${suffix}`)
 
@@ -153,7 +183,7 @@ async function createReadme(variant: BuildVariant): Promise<void> {
 
 const readme = `# OpenCode Onprem Bundle
 
-This is a self-contained onprem bundle of OpenCode for Linux x64.
+This is a self-contained onprem bundle of OpenCode for ${platform}.
 ${variantNote}
 ## Contents
 
@@ -315,65 +345,94 @@ Query files should be in \`deps/tree-sitter/queries/<language>/\`.
   await Bun.write(path.join(BUNDLE_DIR, "README.md"), readme)
 }
 
-async function createTarball(variant: BuildVariant): Promise<void> {
+async function createTarball(platform: string, variant: BuildVariant): Promise<void> {
   const suffix = variant === "baseline" ? "-baseline" : ""
   const BUNDLE_DIR = `${BUNDLE_BASE_NAME}${suffix}`
-  const TARBALL_NAME = `${BUNDLE_DIR}.tar.zst`
+  
+  const isWindows = platform === "windows-x64"
+  const ext = isWindows ? ".7z" : ".tar.zst"
+  const TARBALL_NAME = `${BUNDLE_DIR}${ext}`
 
-  console.log(`\n=== Creating tarball (${variant}) ===`)
+  console.log(`\n=== Creating archive (${variant}) ===`)
 
   const tarballPath = path.join("dist", TARBALL_NAME)
   await fs.unlink(tarballPath).catch(() => {})
 
-  const proc = Bun.spawn(
-    ["tar", "--zstd", "-cf", TARBALL_NAME, BUNDLE_DIR],
-    {
-      cwd: "dist",
-      stdout: "inherit",
-      stderr: "inherit",
-    }
-  )
+  const args = isWindows 
+    ? ["7z", "a", "-t7z", "-mmt=on", TARBALL_NAME, BUNDLE_DIR]
+    : ["tar", "--zstd", "-cf", TARBALL_NAME, BUNDLE_DIR]
+
+  const proc = Bun.spawn(args, {
+    cwd: "dist",
+    stdout: "inherit",
+    stderr: "inherit",
+  })
   await proc.exited
   if (proc.exitCode !== 0) {
-    throw new Error("Failed to create tarball")
+    throw new Error("Failed to create archive")
   }
 
   const stats = await fs.stat(tarballPath)
   const sizeMB = (stats.size / (1024 * 1024)).toFixed(2)
 
-  console.log(`Tarball: dist/${TARBALL_NAME} (${sizeMB} MB)`)
+  console.log(`Archive: dist/${TARBALL_NAME} (${sizeMB} MB)`)
 }
 
-async function main() {
-  console.log("=== OpenCode Onprem Bundle Packager ===")
 
-  const depsExist = await fs.stat(DEPS_DIR).catch(() => null)
-  if (!depsExist) {
-    console.error(`Error: Dependencies not found at ${DEPS_DIR}`)
-    console.error("Please run 'bun run script/download-onprem-deps.ts' first")
-    process.exit(1)
+async function main() {
+  const args = process.argv.slice(2)
+  const platformsArg = args.find(a => a.startsWith("--platforms="))
+  const platforms = platformsArg ? platformsArg.split("=")[1].split(",") : ["linux-x64", "windows-x64"]
+
+  console.log("=== OpenCode Onprem Bundle Packager ===")
+  console.log(`Target platforms: ${platforms.join(", ")}`)
+
+  // Verify all deps exist first
+  for (const p of platforms) {
+    const platform = p
+    const depsDir = `dist/onprem-deps-${platform}`
+    const depsExist = await fs.stat(depsDir).catch(() => null)
+    if (!depsExist) {
+      console.error(`Error: Dependencies not found at ${depsDir}`)
+      console.error(`Please run 'bun run script/download-onprem-deps.ts --platforms=${p}' first`)
+      process.exit(1)
+    }
   }
 
   await buildAll()
 
   const variants: BuildVariant[] = ["normal", "baseline"]
 
-  for (const variant of variants) {
-    const buildDir = await findBuildDir(variant)
-    console.log(`\nFound ${variant} build: ${buildDir}`)
-    await createBundle(buildDir, variant)
-    await createWrapperScript(variant)
-    await createEnvFile(variant)
-    await createReadme(variant)
-    await createTarball(variant)
+  for (const p of platforms) {
+    const platform = p
+    BUNDLE_BASE_NAME = `opencode-onprem-${platform}`
+    DEPS_DIR = `dist/onprem-deps-${platform}`
+
+    for (const variant of variants) {
+      const buildDir = await findBuildDir(platform, variant)
+      console.log(`\nFound ${variant} build for ${platform}: ${buildDir}`)
+      await createBundle(buildDir, platform, variant)
+      await createWrapperScript(platform, variant)
+      await createEnvFile(platform, variant)
+      await createReadme(platform, variant)
+      await createTarball(platform, variant)
+    }
   }
 
   console.log("\n=== Packaging complete ===")
   console.log("\nBundles created:")
-  for (const variant of variants) {
-    const suffix = variant === "baseline" ? "-baseline" : ""
-    const sizeMB = (await fs.stat(`dist/${BUNDLE_BASE_NAME}${suffix}.tar.zst`)).size / (1024 * 1024)
-    console.log(`  dist/${BUNDLE_BASE_NAME}${suffix}.tar.zst (${sizeMB.toFixed(2)} MB)`)
+  for (const p of platforms) {
+    const platform = p
+    const baseName = `opencode-onprem-${platform}`
+    const ext = platform === "windows-x64" ? ".7z" : ".tar.zst"
+    for (const variant of variants) {
+      const suffix = variant === "baseline" ? "-baseline" : ""
+      const stats = await fs.stat(`dist/${baseName}${suffix}${ext}`).catch(() => null)
+      if (stats) {
+        const sizeMB = stats.size / (1024 * 1024)
+        console.log(`  dist/${baseName}${suffix}${ext} (${sizeMB.toFixed(2)} MB)`)
+      }
+    }
   }
 }
 

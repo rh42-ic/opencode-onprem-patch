@@ -83,24 +83,33 @@ bun run script/download-onprem-deps.ts --plugins-only
 OPENCODE_VERSION=1.3.9 bun run script/package-onprem-bundle.ts
 ```
 
+> **注意：** 默认会同时打包所有平台的依赖。你也可以使用 `--platforms=windows-x64` 参数来限制打包的目标平台。
+
 > **注意：** `OPENCODE_VERSION` 环境变量用于设置编译后的版本号。
 
-打包完成后会生成两个版本：
-- `opencode-onprem-linux-x64.tar.zst` - 标准版本（需要 AVX2 支持）
-- `opencode-onprem-linux-x64-baseline.tar.zst` - 兼容版本（无需 AVX2，适用于旧 CPU）
+打包完成后会生成以下平台对应的归档版本：
+- `opencode-onprem-linux-x64.tar.zst` - Linux 标准版本（需要 AVX2 支持）
+- `opencode-onprem-linux-x64-baseline.tar.zst` - Linux 兼容版本（无需 AVX2，适用于旧 CPU）
+- `opencode-onprem-windows-x64.7z` - Windows 标准版本（需要 AVX2 支持）
+- `opencode-onprem-windows-x64-baseline.7z` - Windows 兼容版本（无需 AVX2，适用于旧 CPU）
 
 ### 4. 部署到离线环境
 
 ```bash
-# 标准版本（需要 AVX2）
+# Linux 标准版本（需要 AVX2）
 tar --zstd -xf opencode-onprem-linux-x64.tar.zst
 cd opencode-onprem-linux-x64
 ./opencode-onprem
 
-# 或兼容版本（无需 AVX2）
+# 或 Linux 兼容版本（无需 AVX2）
 tar --zstd -xf opencode-onprem-linux-x64-baseline.tar.zst
 cd opencode-onprem-linux-x64-baseline
 ./opencode-onprem
+
+# Windows 版本
+# 使用 7z 等工具解压 opencode-onprem-windows-x64.7z
+cd opencode-onprem-windows-x64
+opencode-onprem.bat
 ```
 
 ## Patch 文件说明

@@ -23,6 +23,7 @@ git apply /path/to/opencode-onprem-patch/patches/0001-add-onprem-module-and-scri
 git apply /path/to/opencode-onprem-patch/patches/0002-modify-source-files.patch
 git apply /path/to/opencode-onprem-patch/patches/lsp-server-onprem.patch
 git apply /path/to/opencode-onprem-patch/patches/parsers-config-onprem.patch
+git apply /path/to/opencode-onprem-patch/patches/plugins-onprem.patch
 
 # 4. If there are conflicts
 # Check .rej files, merge manually
@@ -45,15 +46,18 @@ New files:
 | `packages/opencode/src/onprem/index.ts` | Core onprem module, provides offline resource resolution |
 | `script/download-onprem-deps.ts` | Pre-download dependencies script |
 | `script/package-onprem-bundle.ts` | Packaging script |
+| `script/onprem-plugins.json` | Plugin configuration file |
+| `script/onprem-plugins.schema.json` | JSON Schema |
 
 ### 0002-modify-source-files.patch
 
 Modified files:
 | File Path | Modification |
 |-----------|--------------|
+| `packages/opencode/package.json` | Add opentui dependency |
 | `packages/opencode/src/flag/flag.ts` | Add `OPENCODE_ONPREM_MODE` and `OPENCODE_ONPREM_DEPS_PATH` flags |
 | `packages/opencode/src/file/ripgrep.ts` | Add offline ripgrep path check |
-| `packages/opencode/src/provider/models.ts` | Add loading model data from deps/models.json with dual fallback and logging |
+| `packages/opencode/src/provider/models.ts` | Add loading model data from deps/models.json |
 | `packages/opencode/src/server/instance.ts` | Add Web UI static file serving |
 
 ### lsp-server-onprem.patch
@@ -73,17 +77,30 @@ Modifies `packages/opencode/src/lsp/server.ts`, adding offline path checks for t
 - vscode-eslint (ESLint)
 - elixir-ls (Elixir)
 
-**NPM-based LSPs (12):**
-- typescript-language-server, pyright
-- svelte-language-server, @astrojs/language-server
-- yaml-language-server, dockerfile-language-server-nodejs
-- @vue/language-server, intelephense, bash-language-server
-- oxlint, biome, prisma
-
+**NPM-based LSPs:**
+- typescript-language-server
+- pyright
+- svelte-language-server
+- @astrojs/language-server
+- yaml-language-server
+- dockerfile-language-server-nodejs
+- @vue/language-server
+- intelephense (PHP)
+- bash-language-server
+- oxlint
+- biome
+- prisma
 
 ### parsers-config-onprem.patch
 
 Modifies `packages/opencode/parsers-config.ts` to support loading tree-sitter WASM and query files from local deps directory.
+
+Supports 25 languages:
+python, rust, go, cpp, csharp, bash, c, java, kotlin, ruby, php, scala, html, hcl, json, yaml, haskell, css, julia, lua, ocaml, clojure, swift, toml, nix
+
+### plugins-onprem.patch
+
+Modifies `packages/opencode/src/bun/index.ts`, adding offline plugin detection to `BunProc.install()`.
 
 ## Search Markers
 
@@ -174,46 +191,11 @@ export const Data = lazy(async () => {
 })
 ```
 
-3. Modify the beginning of `get()` function with improved error logging:
-```typescript
-export async function get() {
-  // onprem-fork: in onprem mode, try bundled models from deps first
-  if (Onprem.isEnabled()) {
-    const depsPath = Onprem.getDepsPath()
-    if (depsPath) {
-      const modelsPath = path.join(depsPath, "models.json")
-      const offlineResult = await Filesystem.readJson(modelsPath).catch((e) => {
-        log.warn("failed to read onprem models.json", { path: modelsPath, error: String(e) })
-        return undefined
-      })
-      if (offlineResult) return offlineResult as Record<string, Provider>
-    }
-  }
-
-  const result = await Data()
-  return result as Record<string, Provider>
-}
-```
-
-4. Modify refresh logic to skip onprem mode:
-```typescript
-// onprem-fork: skip models refresh in onprem mode
-if (!Onprem.isEnabled() && !Flag.OPENCODE_DISABLE_MODELS_FETCH && !process.argv.includes("--get-yargs-completions")) {
-  ModelsDev.refresh()
-  // ...
-}
-```
-
 **Model Loading Priority (onprem mode):**
 1. Cache file (`~/.cache/opencode/models.json` or `OPENCODE_MODELS_PATH`)
 2. onprem deps directory (`OPENCODE_ONPREM_DEPS_PATH/models.json`)
 3. Bundled snapshot (`models-snapshot.ts`)
 4. Network fetch (if `OPENCODE_DISABLE_MODELS_FETCH` is not set)
-
-**Log Output:**
-- Successfully loaded from onprem deps: `log.info("loaded models from onprem deps", { path: depsPath })`
-- deps directory exists but models.json missing: `log.warn("onprem enabled but deps models.json not found", { path: depsPath })`
-- Failed to read models.json: `log.warn("failed to read onprem models.json", { path: modelsPath, error: String(e) })`
 
 ### server/instance.ts
 
@@ -334,11 +316,11 @@ git add -A
 git commit -m "onprem modifications for version x.x.x"
 
 # Generate new patches
-git diff HEAD~1 HEAD -- packages/opencode/src/onprem/index.ts script/ > patches/0001-add-onprem-module-and-scripts.patch
-git diff HEAD~1 HEAD -- packages/opencode/src/flag/flag.ts packages/opencode/src/file/ripgrep.ts packages/opencode/src/provider/models.ts packages/opencode/src/server/instance.ts packages/opencode/src/installation/index.ts > patches/0002-modify-source-files.patch
+git diff HEAD~1 HEAD -- script/download-onprem-deps.ts script/package-onprem-bundle.ts packages/opencode/src/onprem/index.ts script/onprem-plugins.json script/onprem-plugins.schema.json > patches/0001-add-onprem-module-and-scripts.patch
+git diff HEAD~1 HEAD -- packages/opencode/src/flag/flag.ts packages/opencode/src/file/ripgrep.ts packages/opencode/src/provider/models.ts packages/opencode/src/server/instance.ts packages/opencode/package.json > patches/0002-modify-source-files.patch
 git diff HEAD~1 HEAD -- packages/opencode/src/lsp/server.ts > patches/lsp-server-onprem.patch
 git diff HEAD~1 HEAD -- packages/opencode/parsers-config.ts > patches/parsers-config-onprem.patch
-git diff HEAD~1 HEAD -- packages/opencode/src/bun/index.ts packages/opencode/src/onprem/index.ts script/download-onprem-deps.ts script/onprem-plugins.json script/onprem-plugins.schema.json > patches/plugins-onprem.patch
+git diff HEAD~1 HEAD -- packages/opencode/src/bun/index.ts > patches/plugins-onprem.patch
 ```
 
 ## Pre-downloaded Resources Manifest
@@ -380,10 +362,10 @@ git diff HEAD~1 HEAD -- packages/opencode/src/bun/index.ts packages/opencode/src
 
 ### Tree-sitter Parsers (WASM)
 
-Supports tree-sitter parsers for 21 languages:
-- python, rust, go, cpp, csharp, bash, c, java, ruby, php
-- scala, html, json, yaml, haskell, css, julia, ocaml
-- clojure, swift, nix
+Supports tree-sitter parsers for 25 languages:
+- python, rust, go, cpp, csharp, bash, c, java, kotlin, ruby, php
+- scala, html, hcl, json, yaml, haskell, css, julia, lua, ocaml
+- clojure, swift, toml, nix
 
 Storage path: `deps/tree-sitter/wasm/`
 
@@ -398,6 +380,7 @@ Storage path: `deps/tree-sitter/queries/{lang}/`
 |------------|--------------|
 | models.json | `deps/models.json` |
 | Web App | `deps/app/` |
+| OpenTUI | `deps/opentui/libopentui.so` |
 
 ### Offline Plugins
 

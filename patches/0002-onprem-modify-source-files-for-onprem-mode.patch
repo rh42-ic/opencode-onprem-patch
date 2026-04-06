@@ -1,6 +1,6 @@
-From f7dfce0a66063b3eb4312067c8d1590a0b57e432 Mon Sep 17 00:00:00 2001
+From a3e0ee848992ea18fccb97c4e5ffe5836a38492e Mon Sep 17 00:00:00 2001
 From: RH42-IC <chensy.ic@foxmail.com>
-Date: Tue, 31 Mar 2026 13:35:00 +0000
+Date: Sun, 5 Apr 2026 21:38:42 +0800
 Subject: [PATCH 2/5] onprem: modify source files for onprem mode
 
 ---
@@ -44,10 +44,10 @@ index 601c82e..ee0029c 100644
  
      if (!(await Filesystem.exists(filepath))) {
 diff --git a/packages/opencode/src/flag/flag.ts b/packages/opencode/src/flag/flag.ts
-index 27190f2..e7fa27c 100644
+index 1ac52dd..63cbb03 100644
 --- a/packages/opencode/src/flag/flag.ts
 +++ b/packages/opencode/src/flag/flag.ts
-@@ -79,6 +79,10 @@ export namespace Flag {
+@@ -80,6 +80,10 @@ export namespace Flag {
    export const OPENCODE_SKIP_MIGRATIONS = truthy("OPENCODE_SKIP_MIGRATIONS")
    export const OPENCODE_STRICT_CONFIG_DEPS = truthy("OPENCODE_STRICT_CONFIG_DEPS")
  
@@ -59,18 +59,18 @@ index 27190f2..e7fa27c 100644
      const value = process.env[key]
      if (!value) return undefined
 diff --git a/packages/opencode/src/provider/models.ts b/packages/opencode/src/provider/models.ts
-index 30901ea..d2ba4a3 100644
+index c6ab5d8..40f0621 100644
 --- a/packages/opencode/src/provider/models.ts
 +++ b/packages/opencode/src/provider/models.ts
-@@ -6,6 +6,7 @@ import { Installation } from "../installation"
- import { Flag } from "../flag/flag"
- import { lazy } from "@/util/lazy"
+@@ -8,6 +8,7 @@ import { lazy } from "@/util/lazy"
  import { Filesystem } from "../util/filesystem"
+ import { Flock } from "@/util/flock"
+ import { Hash } from "@/util/hash"
 +import { Onprem } from "../onprem"
  
  // Try to import bundled snapshot (generated at build time)
  // Falls back to undefined in dev mode when snapshot doesn't exist
-@@ -88,6 +89,18 @@ export namespace ModelsDev {
+@@ -111,6 +112,18 @@ export namespace ModelsDev {
    export const Data = lazy(async () => {
      const result = await Filesystem.readJson(Flag.OPENCODE_MODELS_PATH ?? filepath).catch(() => {})
      if (result) return result
@@ -89,7 +89,7 @@ index 30901ea..d2ba4a3 100644
      // @ts-ignore
      const snapshot = await import("./models-snapshot.js")
        .then((m) => m.snapshot as Record<string, unknown>)
-@@ -99,6 +112,19 @@ export namespace ModelsDev {
+@@ -131,6 +144,19 @@ export namespace ModelsDev {
    })
  
    export async function get() {
@@ -109,7 +109,7 @@ index 30901ea..d2ba4a3 100644
      const result = await Data()
      return result as Record<string, Provider>
    }
-@@ -121,7 +147,8 @@ export namespace ModelsDev {
+@@ -151,7 +177,8 @@ export namespace ModelsDev {
    }
  }
  
@@ -120,10 +120,10 @@ index 30901ea..d2ba4a3 100644
    setInterval(
      async () => {
 diff --git a/packages/opencode/src/server/instance.ts b/packages/opencode/src/server/instance.ts
-index 4bb6efa..5c1f39b 100644
+index 0186bf4..a9611b0 100644
 --- a/packages/opencode/src/server/instance.ts
 +++ b/packages/opencode/src/server/instance.ts
-@@ -23,6 +23,7 @@ import { McpRoutes } from "./routes/mcp"
+@@ -24,6 +24,7 @@ import { McpRoutes } from "./routes/mcp"
  import { FileRoutes } from "./routes/file"
  import { ConfigRoutes } from "./routes/config"
  import { ExperimentalRoutes } from "./routes/experimental"
@@ -131,7 +131,7 @@ index 4bb6efa..5c1f39b 100644
  import { ProviderRoutes } from "./routes/provider"
  import { EventRoutes } from "./routes/event"
  import { errorHandler } from "./middleware"
-@@ -249,6 +250,12 @@ export const InstanceRoutes = (app?: Hono) =>
+@@ -278,6 +279,12 @@ export const InstanceRoutes = (app?: Hono) =>
        },
      )
      .all("/*", async (c) => {
@@ -145,5 +145,5 @@ index 4bb6efa..5c1f39b 100644
        const path = c.req.path
  
 -- 
-2.43.0
+2.47.3
 

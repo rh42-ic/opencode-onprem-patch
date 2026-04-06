@@ -6,20 +6,28 @@
 
 This directory contains **git patch files**, scripts, and documentation required to modify the original opencode into an on-premises (offline) version.
 
+If patching fails, the descriptive documentation should be sufficient for an AI Coding Agent to resolve conflicts. You can start by saying:
+
+```
+Read the instructions in @/path/to/opencode-onprem-patch, apply patches to @/path/to/opencode-1.x.xx, and resolve any conflicts that occur.
+```
+
 ## Directory Structure
 
 ```
-opencode-onprem/
+opencode-onprem-patch/
 ├── manifest.json           # Modification manifest
 ├── WORKFLOW.md             # Detailed build guide
 ├── README.md               # This file
 ├── patches/
-│   ├── 0001-add-onprem-module-and-scripts.patch  # Newfiles│   ├── 0002-modify-source-files.patch            # Source modifications (base)
+│   ├── 0001-add-onprem-module-and-scripts.patch  # New files
+│   ├── 0002-modify-source-files.patch            # Source modifications (base)
 │   ├── lsp-server-onprem.patch                   # LSP server offline support
 │   ├── parsers-config-onprem.patch                # Tree-sitter offline support
 │   └── plugins-onprem.patch                      # Plugin offline support
 ├── src/
-│   ├── onprem-plugins.json       # Plugin config template
+│   ├── onprem-index.ts         # Onprem module source
+│   ├── onprem-plugins.json      # Plugin config template
 │   └── onprem-plugins.schema.json # Config Schema
 └── scripts/
     ├── download-onprem-deps.ts    # Pre-download dependencies script
@@ -38,14 +46,15 @@ git clone https://github.com/anomalyco/opencode.git opencode-new
 cd opencode-new
 
 # Method 1: Use script to auto-apply (recommended)
-/path/to/opencode-onprem/scripts/apply-patches.sh .
+/path/to/opencode-onprem-patch/scripts/apply-patches.sh .
 
 # Method 2: Manually apply git patches
 git init && git add -A && git commit -m "init"
-git apply /path/to/opencode-onprem/patches/0001-add-onprem-module-and-scripts.patch
-git apply /path/to/opencode-onprem/patches/0002-modify-source-files.patch
-git apply /path/to/opencode-onprem/patches/lsp-server-onprem.patch
-git apply /path/to/opencode-onprem/patches/parsers-config-onprem.patch
+git apply /path/to/opencode-onprem-patch/patches/0001-add-onprem-module-and-scripts.patch
+git apply /path/to/opencode-onprem-patch/patches/0002-modify-source-files.patch
+git apply /path/to/opencode-onprem-patch/patches/lsp-server-onprem.patch
+git apply /path/to/opencode-onprem-patch/patches/parsers-config-onprem.patch
+git apply /path/to/opencode-onprem-patch/patches/plugins-onprem.patch
 ```
 
 ### 2. Pre-download Dependencies
@@ -63,30 +72,44 @@ Optional environment variables:
 - `RUST_ANALYZER_MIRROR_URL` - Mirror URL for rust-analyzer
 - `SKIP_WEB_APP_BUILD=true` - Skip Web App build
 
+Download plugins only (for testing):
+```bash
+bun run script/download-onprem-deps.ts --plugins-only
+```
+
 ### 3. Package Bundle
 
 ```bash
 OPENCODE_VERSION=1.3.9 bun run script/package-onprem-bundle.ts
 ```
 
+> **Note:** By default, dependencies for all platforms are bundled together. You can use the `--platforms=windows-x64` parameter to restrict the target platform for packaging.
+
 > **Note:** The `OPENCODE_VERSION` environment variable sets the compiled version number.
 
-After packaging, two versions are generated:
-- `opencode-onprem-linux-x64.tar.zst` - Standard version (requires AVX2 support)
-- `opencode-onprem-linux-x64-baseline.tar.zst` - Compatible version (no AVX2 required, for older CPUs)
+After packaging, the following platform-specific archive versions will be generated:
+- `opencode-onprem-linux-x64.tar.zst` - Linux standard version (requires AVX2 support)
+- `opencode-onprem-linux-x64-baseline.tar.zst` - Linux compatible version (no AVX2 required, for older CPUs)
+- `opencode-onprem-windows-x64.7z` - Windows standard version (requires AVX2 support)
+- `opencode-onprem-windows-x64-baseline.7z` - Windows compatible version (no AVX2 required, for older CPUs)
 
 ### 4. Deploy to Offline Environment
 
 ```bash
-# Standard version (requires AVX2)
+# Linux standard version (requires AVX2)
 tar --zstd -xf opencode-onprem-linux-x64.tar.zst
 cd opencode-onprem-linux-x64
 ./opencode-onprem
 
-# Or compatible version (no AVX2 required)
+# Or Linux compatible version (no AVX2 required)
 tar --zstd -xf opencode-onprem-linux-x64-baseline.tar.zst
 cd opencode-onprem-linux-x64-baseline
 ./opencode-onprem
+
+# Windows version
+# Extract opencode-onprem-windows-x64.7z using a tool like 7z
+cd opencode-onprem-windows-x64
+opencode-onprem.bat
 ```
 
 ## Patch File Descriptions
@@ -97,6 +120,8 @@ New files:
 - `packages/opencode/src/onprem/index.ts` - Core onprem module
 - `script/download-onprem-deps.ts` - Pre-download script
 - `script/package-onprem-bundle.ts` - Packaging script
+- `script/onprem-plugins.json` - Plugin configuration file
+- `script/onprem-plugins.schema.json` - JSON Schema
 
 ### 0002-modify-source-files.patch
 
@@ -124,16 +149,12 @@ Adds offline support for the following LSPs:
 
 ### parsers-config-onprem.patch
 
-Supports offline loading of tree-sitter parsers for 21 languages.
+Supports offline loading of tree-sitter parsers for 25 languages.
 
 ### plugins-onprem.patch
 
-New and modified files:
+Modified files:
 - `packages/opencode/src/bun/index.ts` - Add offline plugin detection at start of `BunProc.install()`
-- `packages/opencode/src/onprem/index.ts` - Add `resolvePlugin()` and `pluginExists()` functions
-- `script/onprem-plugins.json` - Plugin configuration file (new)
-- `script/onprem-plugins.schema.json` - JSON Schema (new)
-- `script/download-onprem-deps.ts` - Add plugin installation logic and `--plugins-only` option
 
 ## Supported Offline Components
 
@@ -172,8 +193,8 @@ New and modified files:
 
 ### Tree-sitter Parsers
 
-Syntax parsers for 21 languages:
-python, rust, go, cpp, csharp, bash, c, java, ruby, php, scala, html, json, yaml, haskell, css, julia, ocaml, clojure, swift, nix
+Syntax parsers for 25 languages:
+python, rust, go, cpp, csharp, bash, c, java, kotlin, ruby, php, scala, html, hcl, json, yaml, haskell, css, julia, lua, ocaml, clojure, swift, toml, nix
 
 ## Environment Variables
 
@@ -231,6 +252,8 @@ deps/
 │   ├── package.json                # Generated by bun install
 │   └── node_modules/
 │       └── opencode-anthropic-auth/ # Example plugin
+├── opentui/                         # OpenTUI native library
+│   └── libopentui.so
 ├── models.json                      # Model metadata
 ├── app/                             # Web UI
 └── manifest.json                    # Bundle manifest
