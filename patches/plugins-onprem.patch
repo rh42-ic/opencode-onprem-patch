@@ -1,5 +1,5 @@
-From 399edfce3da63b9d1eafe80f91ca8cffc9c46ae6 Mon Sep 17 00:00:00 2001
-From: rh42-ic <chensy.ic@foxmail.com>
+From 9bdd48ab05ad9517b974d49217a9ed33c7e27c6d Mon Sep 17 00:00:00 2001
+From: rh42-ic <218984493+rh42-ic@users.noreply.github.com>
 Date: Tue, 14 Apr 2026 20:43:02 +0800
 Subject: [PATCH 5/5] onprem: add offline plugin detection in plugin/shared.ts
 

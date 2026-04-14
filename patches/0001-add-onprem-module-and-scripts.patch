@@ -1,5 +1,5 @@
-From 75f29b2ec36fb86f2f387851e2655cb831820446 Mon Sep 17 00:00:00 2001
-From: rh42-ic <chensy.ic@foxmail.com>
+From 60a6087721407a15d2601a29e9c8fff765643b2c Mon Sep 17 00:00:00 2001
+From: rh42-ic <218984493+rh42-ic@users.noreply.github.com>
 Date: Tue, 14 Apr 2026 20:43:01 +0800
 Subject: [PATCH 1/5] onprem: add onprem module and scripts
 

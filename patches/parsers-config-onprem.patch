@@ -1,5 +1,5 @@
-From b4d1bb5a4888edde15c0099c8b614d6a9bb9477e Mon Sep 17 00:00:00 2001
-From: rh42-ic <chensy.ic@foxmail.com>
+From a5e0a50827c02229944f641b77206f0f46ecb458 Mon Sep 17 00:00:00 2001
+From: rh42-ic <218984493+rh42-ic@users.noreply.github.com>
 Date: Tue, 14 Apr 2026 20:43:02 +0800
 Subject: [PATCH 4/5] onprem: support loading tree-sitter parsers from local
  deps
