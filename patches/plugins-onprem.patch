@@ -1,0 +1,40 @@
+From 399edfce3da63b9d1eafe80f91ca8cffc9c46ae6 Mon Sep 17 00:00:00 2001
+From: rh42-ic <chensy.ic@foxmail.com>
+Date: Tue, 14 Apr 2026 20:43:02 +0800
+Subject: [PATCH 5/5] onprem: add offline plugin detection in plugin/shared.ts
+
+---
+ packages/opencode/src/plugin/shared.ts | 10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+diff --git a/packages/opencode/src/plugin/shared.ts b/packages/opencode/src/plugin/shared.ts
+index 6cda497..e02f15f 100644
+--- a/packages/opencode/src/plugin/shared.ts
++++ b/packages/opencode/src/plugin/shared.ts
+@@ -5,6 +5,7 @@ import semver from "semver"
+ import { Npm } from "@/npm"
+ import { Filesystem } from "@/util/filesystem"
+ import { isRecord } from "@/util/record"
++import { Onprem } from "../onprem"
+ 
+ // Old npm package names for plugins that are now built-in
+ export const DEPRECATED_PLUGIN_PACKAGES = ["opencode-openai-codex-auth", "opencode-copilot-auth"]
+@@ -207,6 +208,15 @@ export async function checkPluginCompatibility(target: string, opencodeVersion:
+ export async function resolvePluginTarget(spec: string) {
+   if (isPathPluginSpec(spec)) return resolvePathPluginTarget(spec)
+   const hit = parse(spec)
++
++  // onprem-fork: check offline plugins directory first
++  if (Onprem.isEnabled() && hit?.name) {
++    const pluginPath = Onprem.resolvePlugin(hit.name)
++    if (pluginPath && (await Onprem.pluginExists(hit.name))) {
++      return pluginPath
++    }
++  }
++
+   const pkg = hit?.name && hit.raw === hit.name ? `${hit.name}@latest` : spec
+   const result = await Npm.add(pkg)
+   return result.directory
+-- 
+2.47.3
+

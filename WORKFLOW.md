@@ -100,7 +100,7 @@ python, rust, go, cpp, csharp, bash, c, java, kotlin, ruby, php, scala, html, hc
 
 ### plugins-onprem.patch
 
-修改 `packages/opencode/src/bun/index.ts`，在 `BunProc.install()` 添加离线插件检测。
+修改 `packages/opencode/src/plugin/shared.ts`，在 `resolvePluginTarget()` 添加离线插件检测。
 
 ## 搜索标记
 
@@ -289,7 +289,7 @@ bun run script/download-onprem-deps.ts --plugins-only
 ### 3. 打包离线 bundle
 
 ```bash
-OPENCODE_VERSION=1.3.9 bun run script/package-onprem-bundle.ts
+OPENCODE_VERSION=1.4.3 bun run script/package-onprem-bundle.ts
 ```
 
 > **注意：** `OPENCODE_VERSION` 环境变量用于设置编译后的版本号。
@@ -320,7 +320,7 @@ git diff HEAD~1 HEAD -- script/download-onprem-deps.ts script/package-onprem-bun
 git diff HEAD~1 HEAD -- packages/opencode/src/flag/flag.ts packages/opencode/src/file/ripgrep.ts packages/opencode/src/provider/models.ts packages/opencode/src/server/instance.ts packages/opencode/package.json > patches/0002-modify-source-files.patch
 git diff HEAD~1 HEAD -- packages/opencode/src/lsp/server.ts > patches/lsp-server-onprem.patch
 git diff HEAD~1 HEAD -- packages/opencode/parsers-config.ts > patches/parsers-config-onprem.patch
-git diff HEAD~1 HEAD -- packages/opencode/src/bun/index.ts > patches/plugins-onprem.patch
+git diff HEAD~1 HEAD -- packages/opencode/src/plugin/shared.ts > patches/plugins-onprem.patch
 ```
 
 ## 预下载资源清单

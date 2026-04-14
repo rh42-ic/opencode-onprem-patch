@@ -1,7 +1,7 @@
 {
-  "version": "1.3.9",
-  "base": "opencode-1.3.9",
-  "created": "2026-03-31",
+  "version": "1.4.3",
+  "base": "opencode-1.4.3",
+  "created": "2026-04-14",
   "modifications": [
     {
       "file": "packages/opencode/src/onprem/index.ts",
@@ -82,9 +82,9 @@
       "patch": "parsers-config-onprem.patch"
     },
     {
-      "file": "packages/opencode/src/bun/index.ts",
+      "file": "packages/opencode/src/plugin/shared.ts",
       "action": "modify",
-      "description": "Add offline plugin detection in BunProc.install()",
+      "description": "Add offline plugin detection in plugin/shared.ts",
       "search_marker": "// onprem-fork:",
       "patch": "plugins-onprem.patch"
     }

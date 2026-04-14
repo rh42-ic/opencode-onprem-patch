@@ -80,7 +80,7 @@ bun run script/download-onprem-deps.ts --plugins-only
 ### 3. 打包
 
 ```bash
-OPENCODE_VERSION=1.3.9 bun run script/package-onprem-bundle.ts
+OPENCODE_VERSION=1.4.3 bun run script/package-onprem-bundle.ts
 ```
 
 > **注意：** 默认会同时打包所有平台的依赖。你也可以使用 `--platforms=windows-x64` 参数来限制打包的目标平台。
@@ -154,7 +154,7 @@ opencode-onprem.bat
 ### plugins-onprem.patch
 
 修改文件：
-- `packages/opencode/src/bun/index.ts` - 在 `BunProc.install()` 开头添加离线插件检测
+- `packages/opencode/src/plugin/shared.ts` - 在 `resolvePluginTarget()` 开头添加离线插件检测
 
 ## 支持的离线组件
 

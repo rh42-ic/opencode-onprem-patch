@@ -80,7 +80,7 @@ bun run script/download-onprem-deps.ts --plugins-only
 ### 3. Package Bundle
 
 ```bash
-OPENCODE_VERSION=1.3.9 bun run script/package-onprem-bundle.ts
+OPENCODE_VERSION=1.4.3 bun run script/package-onprem-bundle.ts
 ```
 
 > **Note:** By default, dependencies for all platforms are bundled together. You can use the `--platforms=windows-x64` parameter to restrict the target platform for packaging.
@@ -154,7 +154,7 @@ Supports offline loading of tree-sitter parsers for 25 languages.
 ### plugins-onprem.patch
 
 Modified files:
-- `packages/opencode/src/bun/index.ts` - Add offline plugin detection at start of `BunProc.install()`
+- `packages/opencode/src/plugin/shared.ts` - Add offline plugin detection at start of `resolvePluginTarget()`
 
 ## Supported Offline Components
 

@@ -1,6 +1,6 @@
-From 2c2a0c4b8c4dd8fd7f0447a27d05c16f6192ee3f Mon Sep 17 00:00:00 2001
-From: RH42-IC <chensy.ic@foxmail.com>
-Date: Sun, 5 Apr 2026 21:38:38 +0800
+From 75f29b2ec36fb86f2f387851e2655cb831820446 Mon Sep 17 00:00:00 2001
+From: rh42-ic <chensy.ic@foxmail.com>
+Date: Tue, 14 Apr 2026 20:43:01 +0800
 Subject: [PATCH 1/5] onprem: add onprem module and scripts
 
 ---
@@ -1219,7 +1219,7 @@ index 0000000..49762f1
 \ No newline at end of file
 diff --git a/script/package-onprem-bundle.ts b/script/package-onprem-bundle.ts
 new file mode 100644
-index 0000000..297ba63
+index 0000000..8388f06
 --- /dev/null
 +++ b/script/package-onprem-bundle.ts
 @@ -0,0 +1,442 @@
@@ -1584,7 +1584,7 @@ index 0000000..297ba63
 +  await fs.unlink(tarballPath).catch(() => {})
 +
 +  const args = isWindows 
-+    ? ["7z", "a", "-t7z", "-mx=1", "-mmt=on", TARBALL_NAME, BUNDLE_DIR]
++    ? ["7z", "a", "-t7z", "-mmt=on", TARBALL_NAME, BUNDLE_DIR]
 +    : ["tar", "--zstd", "-cf", TARBALL_NAME, BUNDLE_DIR]
 +
 +  const proc = Bun.spawn(args, {

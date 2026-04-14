@@ -100,7 +100,7 @@ python, rust, go, cpp, csharp, bash, c, java, kotlin, ruby, php, scala, html, hc
 
 ### plugins-onprem.patch
 
-Modifies `packages/opencode/src/bun/index.ts`, adding offline plugin detection to `BunProc.install()`.
+Modifies `packages/opencode/src/plugin/shared.ts`, adding offline plugin detection to `resolvePluginTarget()`.
 
 ## Search Markers
 
@@ -289,7 +289,7 @@ bun run script/download-onprem-deps.ts --plugins-only
 ### 3. Package Offline Bundle
 
 ```bash
-OPENCODE_VERSION=1.3.9 bun run script/package-onprem-bundle.ts
+OPENCODE_VERSION=1.4.3 bun run script/package-onprem-bundle.ts
 ```
 
 > **Note:** The `OPENCODE_VERSION` environment variable sets the compiled version number.
@@ -320,7 +320,7 @@ git diff HEAD~1 HEAD -- script/download-onprem-deps.ts script/package-onprem-bun
 git diff HEAD~1 HEAD -- packages/opencode/src/flag/flag.ts packages/opencode/src/file/ripgrep.ts packages/opencode/src/provider/models.ts packages/opencode/src/server/instance.ts packages/opencode/package.json > patches/0002-modify-source-files.patch
 git diff HEAD~1 HEAD -- packages/opencode/src/lsp/server.ts > patches/lsp-server-onprem.patch
 git diff HEAD~1 HEAD -- packages/opencode/parsers-config.ts > patches/parsers-config-onprem.patch
-git diff HEAD~1 HEAD -- packages/opencode/src/bun/index.ts > patches/plugins-onprem.patch
+git diff HEAD~1 HEAD -- packages/opencode/src/plugin/shared.ts > patches/plugins-onprem.patch
 ```
 
 ## Pre-downloaded Resources Manifest
