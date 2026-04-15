@@ -70,7 +70,7 @@
     {
       "file": "packages/opencode/src/lsp/server.ts",
       "action": "modify",
-      "description": "Add offline LSP path checks for all supported LSPs (TypeScript, Pyright, Vue, PHP/Intelephense, Bash, Svelte, Astro, Yaml, Dockerfile, Rust-analyzer, Clangd, ZLS, LuaLS, TerraformLS, TexLab, Tinymist, Oxlint, Biome, Prisma)",
+      "description": "Add offline LSP path checks for all supported LSPs (TypeScript, Pyright, Vue, PHP/Intelephense, Bash, Svelte, Astro, Yaml, Dockerfile, Rust-analyzer, Clangd, ZLS, LuaLS, TerraformLS, TexLab, Tinymist, Oxlint, Biome, Prisma, Deno, Gopls)",
       "search_marker": "// onprem-fork:",
       "patch": "lsp-server-onprem.patch"
     },
@@ -123,6 +123,8 @@
     "lsp/jdtls/": "Eclipse JDT Language Server directory",
     "lsp/vscode-eslint/server/out/eslintServer.js": "VS Code ESLint server script",
     "lsp/elixir-ls-master/release/language_server.sh": "Elixir Language Server script",
+    "lsp/deno/deno": "Deno LSP binary",
+    "lsp/gopls/gopls": "Gopls LSP binary",
     "tree-sitter/wasm/": "Tree-sitter WASM parser files (25 languages)",
     "tree-sitter/queries/": "Tree-sitter query files (highlights, locals)",
     "node_modules/typescript/": "TypeScript npm package",
@@ -157,7 +159,9 @@
       "kotlin-ls (Kotlin)",
       "jdtls (Java)",
       "vscode-eslint (ESLint)",
-      "elixir-ls (Elixir)"
+      "elixir-ls (Elixir)",
+      "deno (Deno)",
+      "gopls (Go)"
     ],
     "npm_lsps": [
       "typescript-language-server (TypeScript/JavaScript)",

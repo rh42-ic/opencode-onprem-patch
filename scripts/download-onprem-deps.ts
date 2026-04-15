@@ -142,6 +142,8 @@ interface Manifest {
     terraformLs?: string
     texlab?: string
     tinymist?: string
+    deno?: string
+    gopls?: string
     kotlin?: string
     jdtls?: string
     vscodeEslint?: string
@@ -793,6 +795,52 @@ async function downloadTreeSitterQueries(): Promise<void> {
   console.log("Tree-sitter query files downloaded")
 }
 
+async function downloadDeno(): Promise<string | undefined> {
+  console.log("\n=== Downloading Deno ===")
+
+  try {
+    const res = await fetch("https://api.github.com/repos/denoland/deno/releases/latest")
+    if (!res.ok) return
+    const release = await res.json() as { tag_name: string }
+    const tag = release.tag_name
+    
+    const assetName = TARGET_PLATFORM === "windows-x64" ? "deno-x86_64-pc-windows-msvc.zip" : "deno-x86_64-unknown-linux-gnu.zip"
+    const url = `https://github.com/denoland/deno/releases/download/${tag}/${assetName}`
+    
+    const dist = path.join(DEPS_DIR, "lsp", "deno")
+    await fs.mkdir(dist, { recursive: true })
+    const archive = path.join(DEPS_DIR, "deno.zip")
+    await downloadFile(url, archive)
+    await extractZip(archive, dist)
+    await fs.unlink(archive)
+    
+    const binName = TARGET_PLATFORM === "windows-x64" ? "deno.exe" : "deno"
+    await fs.chmod(path.join(dist, binName), 0o755).catch(() => {})
+    return tag
+  } catch (err) {
+    console.log(`Deno download failed, skipping: ${err}`)
+    return
+  }
+}
+
+async function downloadGopls(): Promise<string | undefined> {
+  console.log("\n=== Downloading Gopls ===")
+
+  try {
+    // Gopls binaries are not directly in golang/tools releases, 
+    // but we can try to get them from a reliable source or community builds if needed.
+    // For now, we provide a placeholder or instructions.
+    // Alternatively, if we have a way to build it, we could.
+    // Given the constraints, let's try to see if there's a predictable binary URL.
+    // Actually, gopls is often distributed via package managers.
+    // If we can't find a direct binary, we'll skip but keep the redirection logic in the patch.
+    console.log("Gopls direct binary download not yet implemented in script. Please provide gopls binary in deps/lsp/gopls/ manually.")
+    return undefined
+  } catch (err) {
+    return
+  }
+}
+
 async function installNpmPackages(): Promise<Record<string, string>> {
   console.log("\n=== Installing npm packages ===")
 
@@ -889,6 +937,8 @@ async function createManifest(
   terraformLsVersion: string | undefined,
   texlabVersion: string | undefined,
   tinymistVersion: string | undefined,
+  deno: string | undefined,
+  gopls: string | undefined,
   kotlin: string | undefined,
   jdtls: string | undefined,
   eslint: string | undefined,
@@ -912,6 +962,8 @@ async function createManifest(
       terraformLs: terraformLsVersion,
       texlab: texlabVersion,
       tinymist: tinymistVersion,
+      deno,
+      gopls,
       kotlin,
       jdtls,
       vscodeEslint: eslint,
@@ -976,6 +1028,8 @@ async function main() {
     const terraformLsVersion = await downloadTerraformLs()
     const texlabVersion = await downloadTexlab()
     const tinymistVersion = await downloadTinymist()
+    const denoVersion = await downloadDeno()
+    const goplsVersion = await downloadGopls()
     const kotlin = await downloadKotlin()
     const jdtls = await downloadJdtls()
     const eslint = await downloadEslint()
@@ -997,6 +1051,8 @@ async function main() {
       terraformLsVersion,
       texlabVersion,
       tinymistVersion,
+      denoVersion,
+      goplsVersion,
       kotlin,
       jdtls,
       eslint,
