@@ -58,24 +58,26 @@ git apply /path/to/opencode-onprem-patch/patches/plugins-onprem.patch
 | `packages/opencode/src/flag/flag.ts` | 添加 `OPENCODE_ONPREM_MODE` 和 `OPENCODE_ONPREM_DEPS_PATH` 标志 |
 | `packages/opencode/src/file/ripgrep.ts` | 添加离线 ripgrep 路径检查 |
 | `packages/opencode/src/provider/models.ts` | 添加从 deps/models.json 加载模型数据 |
-| `packages/opencode/src/server/instance.ts` | 添加 Web UI 静态文件服务 |
-
-### lsp-server-onprem.patch
-
-修改 `packages/opencode/src/lsp/server.ts`，为以下 LSP 添加离线路径检查：
-
-**Binary LSPs:**
-- clangd
-- rust-analyzer
-- zls (Zig Language Server)
-- lua-language-server
-- terraform-ls
-- texlab (LaTeX)
-- tinymist (Typst)
-- kotlin-ls (Kotlin)
-- jdtls (Java)
-- vscode-eslint (ESLint)
-- elixir-ls (Elixir)
+| `packages/opencode/src/server/routes/ui.ts` | 添加 Web UI 静态文件服务 |
+ 
+ ### lsp-server-onprem.patch
+ 
+ 修改 `packages/opencode/src/lsp/server.ts`，为以下 LSP 添加离线路径检查：
+ 
+ **Binary LSPs:**
+ - clangd
+ - rust-analyzer
+ - zls (Zig Language Server)
+ - lua-language-server
+ - terraform-ls
+ - texlab (LaTeX)
+ - tinymist (Typst)
+ - kotlin-ls (Kotlin)
+ - jdtls (Java)
+ - vscode-eslint (ESLint)
+ - elixir-ls (Elixir)
+ - deno (Deno)
+ - gopls (Go)
 
 **NPM-based LSPs:**
 - typescript-language-server
@@ -197,12 +199,15 @@ export const Data = lazy(async () => {
 3. 内置快照 (`models-snapshot.ts`)
 4. 网络获取（如果 `OPENCODE_DISABLE_MODELS_FETCH` 未设置）
 
-### server/instance.ts
-
-1. 添加导入：
-```typescript
-import { Onprem } from "../onprem"
-```
+### server/routes/ui.ts
+ 
+ ```typescript
+ // onprem-fork: serve bundled web app in onprem mode
+ const onpremStatic = await Onprem.tryServeStaticFile(c.req.path)
+ if (onpremStatic) {
+   return new Response(onpremStatic.body, { headers: { "Content-Type": onpremStatic.mime } })
+ }
+ ```
 
 2. 在 `.all("/*", ...)` 路由开头添加：
 ```typescript
@@ -287,26 +292,26 @@ bun run script/download-onprem-deps.ts --plugins-only
 ```
 
 ### 3. 打包离线 bundle
-
-```bash
-OPENCODE_VERSION=1.4.3 bun run script/package-onprem-bundle.ts
-```
-
-> **注意：** `OPENCODE_VERSION` 环境变量用于设置编译后的版本号。
+ 
+ ```bash
+ OPENCODE_VERSION=1.14.20 bun run script/package-onprem-bundle.ts
+ ```
+ 
+ > **注意：** `OPENCODE_VERSION` 环境变量用于设置编译后的版本号。linux 版本的打包格式已更新为 `tar.xz`。
 
 ### 4. 在离线机器上部署
-
-```bash
-# 标准版本（需要 AVX2）
-tar --zstd -xf opencode-onprem-linux-x64.tar.zst
-cd opencode-onprem-linux-x64
-./opencode-onprem
-
-# 或兼容版本（无需 AVX2，适用于旧 CPU）
-tar --zstd -xf opencode-onprem-linux-x64-baseline.tar.zst
-cd opencode-onprem-linux-x64-baseline
-./opencode-onprem
-```
+ 
+ ```bash
+ # 标准版本（需要 AVX2）
+ tar -xJf opencode-onprem-linux-x64.tar.xz
+ cd opencode-onprem-linux-x64
+ ./opencode-onprem
+ 
+ # 或兼容版本（无需 AVX2，适用于旧 CPU）
+ tar -xJf opencode-onprem-linux-x64-baseline.tar.xz
+ cd opencode-onprem-linux-x64-baseline
+ ./opencode-onprem
+ ```
 
 ## 版本升级后重新生成 Patch
 
@@ -317,8 +322,8 @@ git commit -m "onprem modifications for version x.x.x"
 
 # 生成新 patch
 git diff HEAD~1 HEAD -- script/download-onprem-deps.ts script/package-onprem-bundle.ts packages/opencode/src/onprem/index.ts script/onprem-plugins.json script/onprem-plugins.schema.json > patches/0001-add-onprem-module-and-scripts.patch
-git diff HEAD~1 HEAD -- packages/opencode/src/flag/flag.ts packages/opencode/src/file/ripgrep.ts packages/opencode/src/provider/models.ts packages/opencode/src/server/instance.ts packages/opencode/package.json > patches/0002-modify-source-files.patch
-git diff HEAD~1 HEAD -- packages/opencode/src/lsp/server.ts > patches/lsp-server-onprem.patch
+ git diff HEAD~1 HEAD -- packages/opencode/src/flag/flag.ts packages/opencode/src/file/ripgrep.ts packages/opencode/src/provider/models.ts packages/opencode/src/server/routes/ui.ts packages/opencode/package.json > patches/0002-modify-source-files.patch
+ git diff HEAD~1 HEAD -- packages/opencode/src/lsp/server.ts > patches/lsp-server-onprem.patch
 git diff HEAD~1 HEAD -- packages/opencode/parsers-config.ts > patches/parsers-config-onprem.patch
 git diff HEAD~1 HEAD -- packages/opencode/src/plugin/shared.ts > patches/plugins-onprem.patch
 ```

@@ -58,24 +58,26 @@ Modified files:
 | `packages/opencode/src/flag/flag.ts` | Add `OPENCODE_ONPREM_MODE` and `OPENCODE_ONPREM_DEPS_PATH` flags |
 | `packages/opencode/src/file/ripgrep.ts` | Add offline ripgrep path check |
 | `packages/opencode/src/provider/models.ts` | Add loading model data from deps/models.json |
-| `packages/opencode/src/server/instance.ts` | Add Web UI static file serving |
-
-### lsp-server-onprem.patch
-
-Modifies `packages/opencode/src/lsp/server.ts`, adding offline path checks for the following LSPs:
-
-**Binary LSPs:**
-- clangd
-- rust-analyzer
-- zls (Zig Language Server)
-- lua-language-server
-- terraform-ls
-- texlab (LaTeX)
-- tinymist (Typst)
-- kotlin-ls (Kotlin)
-- jdtls (Java)
-- vscode-eslint (ESLint)
-- elixir-ls (Elixir)
+| `packages/opencode/src/server/routes/ui.ts` | Add Web UI static file serving |
+ 
+ ### lsp-server-onprem.patch
+ 
+ Modifies `packages/opencode/src/lsp/server.ts`, adding offline path checks for the following LSPs:
+ 
+ **Binary LSPs:**
+ - clangd
+ - rust-analyzer
+ - zls (Zig Language Server)
+ - lua-language-server
+ - terraform-ls
+ - texlab (LaTeX)
+ - tinymist (Typst)
+ - kotlin-ls (Kotlin)
+ - jdtls (Java)
+ - vscode-eslint (ESLint)
+ - elixir-ls (Elixir)
+ - deno (Deno)
+ - gopls (Go)
 
 **NPM-based LSPs:**
 - typescript-language-server
@@ -197,12 +199,15 @@ export const Data = lazy(async () => {
 3. Bundled snapshot (`models-snapshot.ts`)
 4. Network fetch (if `OPENCODE_DISABLE_MODELS_FETCH` is not set)
 
-### server/instance.ts
-
-1. Add import:
-```typescript
-import { Onprem } from "../onprem"
-```
+### server/routes/ui.ts
+ 
+ ```typescript
+ // onprem-fork: serve bundled web app in onprem mode
+ const onpremStatic = await Onprem.tryServeStaticFile(c.req.path)
+ if (onpremStatic) {
+   return new Response(onpremStatic.body, { headers: { "Content-Type": onpremStatic.mime } })
+ }
+ ```
 
 2. Add at the beginning of `.all("/*", ...)` route:
 ```typescript
@@ -287,26 +292,26 @@ bun run script/download-onprem-deps.ts --plugins-only
 ```
 
 ### 3. Package Offline Bundle
-
-```bash
-OPENCODE_VERSION=1.4.3 bun run script/package-onprem-bundle.ts
-```
-
-> **Note:** The `OPENCODE_VERSION` environment variable sets the compiled version number.
-
-### 4. Deploy on Offline Machine
-
-```bash
-# Standard version (requires AVX2)
-tar --zstd -xf opencode-onprem-linux-x64.tar.zst
-cd opencode-onprem-linux-x64
-./opencode-onprem
-
-# Or compatible version (no AVX2 required, for older CPUs)
-tar --zstd -xf opencode-onprem-linux-x64-baseline.tar.zst
-cd opencode-onprem-linux-x64-baseline
-./opencode-onprem
-```
+ 
+ ```bash
+ OPENCODE_VERSION=1.14.20 bun run script/package-onprem-bundle.ts
+ ```
+ 
+ > **Note:** The `OPENCODE_VERSION` environment variable sets the compiled version number. The packaging format for Linux has been updated to `tar.xz`.
+ 
+ ### 4. Deploy on Offline Machine
+ 
+ ```bash
+ # Standard version (requires AVX2)
+ tar -xJf opencode-onprem-linux-x64.tar.xz
+ cd opencode-onprem-linux-x64
+ ./opencode-onprem
+ 
+ # Or compatible version (no AVX2 required, for older CPUs)
+ tar -xJf opencode-onprem-linux-x64-baseline.tar.xz
+ cd opencode-onprem-linux-x64-baseline
+ ./opencode-onprem
+ ```
 
 ## Regenerating Patches After Version Upgrade
 
@@ -317,8 +322,8 @@ git commit -m "onprem modifications for version x.x.x"
 
 # Generate new patches
 git diff HEAD~1 HEAD -- script/download-onprem-deps.ts script/package-onprem-bundle.ts packages/opencode/src/onprem/index.ts script/onprem-plugins.json script/onprem-plugins.schema.json > patches/0001-add-onprem-module-and-scripts.patch
-git diff HEAD~1 HEAD -- packages/opencode/src/flag/flag.ts packages/opencode/src/file/ripgrep.ts packages/opencode/src/provider/models.ts packages/opencode/src/server/instance.ts packages/opencode/package.json > patches/0002-modify-source-files.patch
-git diff HEAD~1 HEAD -- packages/opencode/src/lsp/server.ts > patches/lsp-server-onprem.patch
+ git diff HEAD~1 HEAD -- packages/opencode/src/flag/flag.ts packages/opencode/src/file/ripgrep.ts packages/opencode/src/provider/models.ts packages/opencode/src/server/routes/ui.ts packages/opencode/package.json > patches/0002-modify-source-files.patch
+ git diff HEAD~1 HEAD -- packages/opencode/src/lsp/server.ts > patches/lsp-server-onprem.patch
 git diff HEAD~1 HEAD -- packages/opencode/parsers-config.ts > patches/parsers-config-onprem.patch
 git diff HEAD~1 HEAD -- packages/opencode/src/plugin/shared.ts > patches/plugins-onprem.patch
 ```

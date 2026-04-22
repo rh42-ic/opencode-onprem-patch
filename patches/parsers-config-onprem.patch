@@ -1,15 +1,5 @@
-From a5e0a50827c02229944f641b77206f0f46ecb458 Mon Sep 17 00:00:00 2001
-From: rh42-ic <218984493+rh42-ic@users.noreply.github.com>
-Date: Tue, 14 Apr 2026 20:43:02 +0800
-Subject: [PATCH 4/6] onprem: support loading tree-sitter parsers from local
- deps
-
----
- packages/opencode/parsers-config.ts | 581 +++++++++++++++-------------
- 1 file changed, 317 insertions(+), 264 deletions(-)
-
 diff --git a/packages/opencode/parsers-config.ts b/packages/opencode/parsers-config.ts
-index b4951af..f7173e3 100644
+index b4951af..a009c2b 100644
 --- a/packages/opencode/parsers-config.ts
 +++ b/packages/opencode/parsers-config.ts
 @@ -1,290 +1,343 @@
@@ -556,7 +546,7 @@ index b4951af..f7173e3 100644
 +// onprem-fork: Map filetype to WASM filename (handles special cases)
 +const WASM_NAME_MAP: Record<string, string> = {
 +  csharp: "tree-sitter-c_sharp",
- }
++}
 +
 +// onprem-fork: Transform parser config for offline use
 +function transformParserConfigForOnprem(parsers: ParserConfig[]): ParserConfig[] {
@@ -619,8 +609,4 @@ index b4951af..f7173e3 100644
 +  get parsers() {
 +    return transformParserConfigForOnprem(PARSERS)
 +  },
-+}
-\ No newline at end of file
--- 
-2.47.3
-
+ }

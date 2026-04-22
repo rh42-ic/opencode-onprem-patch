@@ -9,7 +9,7 @@
 如果patch失败，描述性文档应该足够AI Coding Agent解决冲突。你可以一开始就：
 
 ```
-阅读 @/path/to/opencode-onprem-patch 说明，对 @/path/to/opencode-1.x.xx 进行patch，如果发生冲突则指定解决方案。
+阅读 @/path/to/opencode-onprem-patch 说明，对 @/path/to/opencode-1.x.xx 进行patch，如果发生冲突则尝试手动进行补丁。
 ```
 
 ## 目录结构
@@ -267,11 +267,11 @@ deps/
 {
   "$schema": "./onprem-plugins.schema.json",
   "plugins": [
-    "opencode-anthropic-auth@0.0.13",
+    "opencode-anthropic-auth@latest",
+    "oh-my-opencode-slim@latest",
     "superpowers@git+https://github.com/obra/superpowers.git",
     "@tarquinen/opencode-dcp@latest",
-    "opencode-supermemory@latest",
-    "github:JRedeker/opencode-morph-fast-apply"
+    "opencode-supermemory@latest"
   ]
 }
 ```

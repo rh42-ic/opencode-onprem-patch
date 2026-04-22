@@ -267,11 +267,11 @@ Before downloading dependencies, edit `script/onprem-plugins.json` to configure 
 {
   "$schema": "./onprem-plugins.schema.json",
   "plugins": [
-    "opencode-anthropic-auth@0.0.13",
+    "opencode-anthropic-auth@latest",
+    "oh-my-opencode-slim@latest",
     "superpowers@git+https://github.com/obra/superpowers.git",
     "@tarquinen/opencode-dcp@latest",
-    "opencode-supermemory@latest",
-    "github:JRedeker/opencode-morph-fast-apply"
+    "opencode-supermemory@latest"
   ]
 }
 ```

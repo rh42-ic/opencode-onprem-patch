@@ -1,149 +1,130 @@
-From 3af8a23c2236838931052decd3bf3e7961f78960 Mon Sep 17 00:00:00 2001
-From: rh42-ic <218984493+rh42-ic@users.noreply.github.com>
-Date: Tue, 14 Apr 2026 20:43:01 +0800
-Subject: [PATCH 2/6] onprem: modify source files for onprem mode
-
----
- packages/opencode/src/file/ripgrep.ts    | 15 ++++++++++++
- packages/opencode/src/flag/flag.ts       |  4 ++++
- packages/opencode/src/provider/models.ts | 29 +++++++++++++++++++++++-
- packages/opencode/src/server/instance.ts |  7 ++++++
- 4 files changed, 54 insertions(+), 1 deletion(-)
-
 diff --git a/packages/opencode/src/file/ripgrep.ts b/packages/opencode/src/file/ripgrep.ts
-index 601c82e..ee0029c 100644
+index d6fd61f..9ede2e1 100644
 --- a/packages/opencode/src/file/ripgrep.ts
 +++ b/packages/opencode/src/file/ripgrep.ts
-@@ -13,6 +13,7 @@ import { text } from "node:stream/consumers"
- 
- import { ZipReader, BlobReader, BlobWriter } from "@zip.js/zip.js"
- import { Log } from "@/util/log"
+@@ -10,6 +10,7 @@ import { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner
+ import * as CrossSpawnSpawner from "@/effect/cross-spawn-spawner"
+ import { Global } from "@/global"
+ import { Log } from "@/util"
 +import { Onprem } from "../onprem"
+ import { sanitizedProcessEnv } from "@/util/opencode-process"
+ import { which } from "@/util/which"
  
- export namespace Ripgrep {
-   const log = Log.create({ service: "ripgrep" })
-@@ -134,6 +135,20 @@ export namespace Ripgrep {
-       if (stat?.isFile()) return { filepath: system }
-       log.warn("bun.which returned invalid rg path", { filepath: system })
-     }
-+
-+    // onprem-fork: check offline deps for bundled ripgrep binary
-+    if (Onprem.isEnabled()) {
-+      const offlinePath = Onprem.resolveBinary("rg" + (process.platform === "win32" ? ".exe" : ""), "ripgrep")
-+      if (offlinePath) {
-+        const offlineFile = Bun.file(offlinePath)
-+        if (await offlineFile.exists()) {
-+          log.info("using onprem ripgrep", { path: offlinePath })
-+          return { filepath: offlinePath }
-+        }
-+      }
-+      log.warn("onprem mode enabled but ripgrep not found in deps")
-+    }
-+
-     const filepath = path.join(Global.Path.bin, "rg" + (process.platform === "win32" ? ".exe" : ""))
+@@ -291,6 +292,16 @@ export const layer: Layer.Layer<Service, never, AppFileSystem.Service | ChildPro
  
-     if (!(await Filesystem.exists(filepath))) {
+       const filepath = yield* Effect.cached(
+         Effect.gen(function* () {
++          // onprem-fork: check offline deps for bundled ripgrep binary
++          if (Onprem.isEnabled()) {
++            const offlinePath = Onprem.resolveBinary("rg" + (process.platform === "win32" ? ".exe" : ""), "ripgrep")
++            if (offlinePath && (yield* fs.isFile(offlinePath).pipe(Effect.orDie))) {
++              log.info("using onprem ripgrep", { path: offlinePath })
++              return offlinePath
++            }
++            log.warn("onprem mode enabled but ripgrep not found in deps")
++          }
++
+           const system = yield* Effect.sync(() => which(process.platform === "win32" ? "rg.exe" : "rg"))
+           if (system && (yield* fs.isFile(system).pipe(Effect.orDie))) return system
+ 
 diff --git a/packages/opencode/src/flag/flag.ts b/packages/opencode/src/flag/flag.ts
-index f091fa0..4e34a5f 100644
+index 72c8931..abcedc6 100644
 --- a/packages/opencode/src/flag/flag.ts
 +++ b/packages/opencode/src/flag/flag.ts
-@@ -84,6 +84,10 @@ export namespace Flag {
-   export const OPENCODE_SKIP_MIGRATIONS = truthy("OPENCODE_SKIP_MIGRATIONS")
-   export const OPENCODE_STRICT_CONFIG_DEPS = truthy("OPENCODE_STRICT_CONFIG_DEPS")
+@@ -80,6 +80,10 @@ export const Flag = {
+   OPENCODE_SKIP_MIGRATIONS: truthy("OPENCODE_SKIP_MIGRATIONS"),
+   OPENCODE_STRICT_CONFIG_DEPS: truthy("OPENCODE_STRICT_CONFIG_DEPS"),
  
 +  // onprem-fork: onprem mode flags
-+  export const OPENCODE_ONPREM_MODE = truthy("OPENCODE_ONPREM_MODE")
-+  export const OPENCODE_ONPREM_DEPS_PATH = process.env["OPENCODE_ONPREM_DEPS_PATH"]
++  OPENCODE_ONPREM_MODE: truthy("OPENCODE_ONPREM_MODE"),
++  OPENCODE_ONPREM_DEPS_PATH: process.env["OPENCODE_ONPREM_DEPS_PATH"],
 +
-   function number(key: string) {
-     const value = process.env[key]
-     if (!value) return undefined
+   OPENCODE_WORKSPACE_ID: process.env["OPENCODE_WORKSPACE_ID"],
+   OPENCODE_EXPERIMENTAL_HTTPAPI: truthy("OPENCODE_EXPERIMENTAL_HTTPAPI"),
+   OPENCODE_EXPERIMENTAL_WORKSPACES: OPENCODE_EXPERIMENTAL || truthy("OPENCODE_EXPERIMENTAL_WORKSPACES"),
 diff --git a/packages/opencode/src/provider/models.ts b/packages/opencode/src/provider/models.ts
-index 2d78758..be926f6 100644
+index 2924666..febf5b2 100644
 --- a/packages/opencode/src/provider/models.ts
 +++ b/packages/opencode/src/provider/models.ts
 @@ -8,6 +8,7 @@ import { lazy } from "@/util/lazy"
- import { Filesystem } from "../util/filesystem"
- import { Flock } from "@/util/flock"
- import { Hash } from "@/util/hash"
+ import { Filesystem } from "../util"
+ import { Flock } from "@opencode-ai/shared/util/flock"
+ import { Hash } from "@opencode-ai/shared/util/hash"
 +import { Onprem } from "../onprem"
  
  // Try to import bundled snapshot (generated at build time)
  // Falls back to undefined in dev mode when snapshot doesn't exist
-@@ -131,6 +132,18 @@ export namespace ModelsDev {
-   export const Data = lazy(async () => {
-     const result = await Filesystem.readJson(Flag.OPENCODE_MODELS_PATH ?? filepath).catch(() => {})
-     if (result) return result
-+    // onprem-fork: try deps models.json from onprem bundle before snapshot
-+    if (Onprem.isEnabled()) {
-+      const depsPath = Onprem.getDepsPath()
-+      if (depsPath) {
-+        const offlineResult = await Filesystem.readJson(path.join(depsPath, "models.json")).catch(() => {})
-+        if (offlineResult) {
-+          log.info("loaded models from onprem deps", { path: depsPath })
-+          return offlineResult as Record<string, Provider>
-+        }
-+        log.warn("onprem enabled but deps models.json not found", { path: depsPath })
+@@ -130,6 +131,18 @@ const fetchApi = async () => {
+ export const Data = lazy(async () => {
+   const result = await Filesystem.readJson(Flag.OPENCODE_MODELS_PATH ?? filepath).catch(() => {})
+   if (result) return result
++  // onprem-fork: try deps models.json from onprem bundle before snapshot
++  if (Onprem.isEnabled()) {
++    const depsPath = Onprem.getDepsPath()
++    if (depsPath) {
++      const offlineResult = await Filesystem.readJson(path.join(depsPath, "models.json")).catch(() => {})
++      if (offlineResult) {
++        log.info("loaded models from onprem deps", { path: depsPath })
++        return offlineResult as Record<string, Provider>
 +      }
++      log.warn("onprem enabled but deps models.json not found", { path: depsPath })
 +    }
-     // @ts-ignore
-     const snapshot = await import("./models-snapshot.js")
-       .then((m) => m.snapshot as Record<string, unknown>)
-@@ -151,6 +164,19 @@ export namespace ModelsDev {
-   })
++  }
+   // @ts-ignore
+   const snapshot = await import("./models-snapshot.js")
+     .then((m) => m.snapshot as Record<string, unknown>)
+@@ -150,6 +163,19 @@ export const Data = lazy(async () => {
+ })
  
-   export async function get() {
-+    // onprem-fork: in onprem mode, try bundled models from deps first
-+    if (Onprem.isEnabled()) {
-+      const depsPath = Onprem.getDepsPath()
-+      if (depsPath) {
-+        const modelsPath = path.join(depsPath, "models.json")
-+        const offlineResult = await Filesystem.readJson(modelsPath).catch((e) => {
-+          log.warn("failed to read onprem models.json", { path: modelsPath, error: String(e) })
-+          return undefined
-+        })
-+        if (offlineResult) return offlineResult as Record<string, Provider>
-+      }
+ export async function get() {
++  // onprem-fork: in onprem mode, try bundled models from deps first
++  if (Onprem.isEnabled()) {
++    const depsPath = Onprem.getDepsPath()
++    if (depsPath) {
++      const modelsPath = path.join(depsPath, "models.json")
++      const offlineResult = await Filesystem.readJson(modelsPath).catch((e) => {
++        log.warn("failed to read onprem models.json", { path: modelsPath, error: String(e) })
++        return undefined
++      })
++      if (offlineResult) return offlineResult as Record<string, Provider>
 +    }
++  }
 +
-     const result = await Data()
-     return result as Record<string, Provider>
-   }
-@@ -171,7 +197,8 @@ export namespace ModelsDev {
-   }
+   const result = await Data()
+   return result as Record<string, Provider>
+ }
+@@ -169,7 +195,8 @@ export async function refresh(force = false) {
+   })
  }
  
 -if (!Flag.OPENCODE_DISABLE_MODELS_FETCH && !process.argv.includes("--get-yargs-completions")) {
 +// onprem-fork: skip models refresh in onprem mode
 +if (!Onprem.isEnabled() && !Flag.OPENCODE_DISABLE_MODELS_FETCH && !process.argv.includes("--get-yargs-completions")) {
-   ModelsDev.refresh()
+   void refresh()
    setInterval(
      async () => {
-diff --git a/packages/opencode/src/server/instance.ts b/packages/opencode/src/server/instance.ts
-index 4bd7802..8e73847 100644
---- a/packages/opencode/src/server/instance.ts
-+++ b/packages/opencode/src/server/instance.ts
-@@ -26,6 +26,7 @@ import { McpRoutes } from "./routes/mcp"
- import { FileRoutes } from "./routes/file"
- import { ConfigRoutes } from "./routes/config"
- import { ExperimentalRoutes } from "./routes/experimental"
-+import { Onprem } from "../onprem"
- import { ProviderRoutes } from "./routes/provider"
- import { EventRoutes } from "./routes/event"
- import { errorHandler } from "./middleware"
-@@ -281,6 +282,12 @@ export const InstanceRoutes = (upgrade: UpgradeWebSocket, app: Hono = new Hono()
-       },
-     )
-     .all("/*", async (c) => {
-+      // onprem-fork: serve bundled web app in onprem mode
-+      const onpremStatic = await Onprem.tryServeStaticFile(c.req.path)
-+      if (onpremStatic) {
-+        return new Response(onpremStatic.body, { headers: { "Content-Type": onpremStatic.mime } })
-+      }
-+
-       const embeddedWebUI = await embeddedUIPromise
-       const path = c.req.path
+diff --git a/packages/opencode/src/server/routes/ui.ts b/packages/opencode/src/server/routes/ui.ts
+index d449cd1..3fb8051 100644
+--- a/packages/opencode/src/server/routes/ui.ts
++++ b/packages/opencode/src/server/routes/ui.ts
+@@ -4,6 +4,7 @@ import { proxy } from "hono/proxy"
+ import { getMimeType } from "hono/utils/mime"
+ import { createHash } from "node:crypto"
+ import fs from "node:fs/promises"
++import { Onprem } from "../../onprem"
  
--- 
-2.47.3
-
+ const embeddedUIPromise = Flag.OPENCODE_DISABLE_EMBEDDED_WEB_UI
+   ? Promise.resolve(null)
+@@ -18,6 +19,12 @@ const csp = (hash = "") =>
+ 
+ export const UIRoutes = (): Hono =>
+   new Hono().all("/*", async (c) => {
++    // onprem-fork: serve bundled web app in onprem mode
++    const onpremStatic = await Onprem.tryServeStaticFile(c.req.path)
++    if (onpremStatic) {
++      return new Response(onpremStatic.body, { headers: { "Content-Type": onpremStatic.mime } })
++    }
++
+     const embeddedWebUI = await embeddedUIPromise
+     const path = c.req.path
+ 

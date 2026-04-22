@@ -1,30 +1,12 @@
-From 60a6087721407a15d2601a29e9c8fff765643b2c Mon Sep 17 00:00:00 2001
-From: rh42-ic <218984493+rh42-ic@users.noreply.github.com>
-Date: Tue, 14 Apr 2026 20:43:01 +0800
-Subject: [PATCH 1/6] onprem: add onprem module and scripts
-
----
- packages/opencode/src/onprem/index.ts |   84 ++
- script/download-onprem-deps.ts        | 1058 +++++++++++++++++++++++++
- script/onprem-plugins.json            |   10 +
- script/onprem-plugins.schema.json     |   21 +
- script/package-onprem-bundle.ts       |  442 +++++++++++
- 5 files changed, 1615 insertions(+)
- create mode 100644 packages/opencode/src/onprem/index.ts
- create mode 100644 script/download-onprem-deps.ts
- create mode 100644 script/onprem-plugins.json
- create mode 100644 script/onprem-plugins.schema.json
- create mode 100644 script/package-onprem-bundle.ts
-
 diff --git a/packages/opencode/src/onprem/index.ts b/packages/opencode/src/onprem/index.ts
 new file mode 100644
-index 0000000..c42c3b8
+index 0000000..f476fac
 --- /dev/null
 +++ b/packages/opencode/src/onprem/index.ts
 @@ -0,0 +1,84 @@
 +import path from "path"
 +import { Flag } from "../flag/flag"
-+import { Filesystem } from "../util/filesystem"
++import { Filesystem } from "../util"
 +
 +export namespace Onprem {
 +  export function isEnabled(): boolean {
@@ -64,7 +46,7 @@ index 0000000..c42c3b8
 +    if (!appDir) return undefined
 +    const filePath = reqPath === "/" ? "/index.html" : reqPath
 +    const file = Bun.file(path.join(appDir, filePath))
-+    if (await file.exists()) return { body: file, mime: Filesystem.mimeType(filePath) }
++    if (await file.exists()) return { body: file, mime: await Filesystem.mimeType(filePath) }
 +    const index = Bun.file(path.join(appDir, "index.html"))
 +    if (await index.exists()) return { body: index, mime: "text/html; charset=utf-8" }
 +    return undefined
@@ -109,10 +91,10 @@ index 0000000..c42c3b8
 \ No newline at end of file
 diff --git a/script/download-onprem-deps.ts b/script/download-onprem-deps.ts
 new file mode 100644
-index 0000000..bd0c15c
+index 0000000..b28270e
 --- /dev/null
 +++ b/script/download-onprem-deps.ts
-@@ -0,0 +1,1058 @@
+@@ -0,0 +1,1090 @@
 +#!/usr/bin/env bun
 +
 +import { $ } from "bun"
@@ -121,7 +103,7 @@ index 0000000..bd0c15c
 +
 +let DEPS_DIR = "dist/onprem-deps"
 +let TARGET_PLATFORM = "linux-x64"
-+const RIPGREP_VERSION = "14.1.1"
++const RIPGREP_VERSION = "15.1.0"
 +
 +// Tree-sitter WASM versions and sources
 +const TREE_SITTER_PARSERS = [
@@ -468,6 +450,34 @@ index 0000000..bd0c15c
 +    return release.tag_name
 +  } catch (err) {
 +    return
++  }
++}
++
++async function downloadDeno(): Promise<string | undefined> {
++  console.log("\n=== Downloading Deno ===")
++
++  try {
++    const releaseResponse = await fetch("https://api.github.com/repos/denoland/deno/releases/latest")
++    if (!releaseResponse.ok) return undefined
++    const release = await releaseResponse.json() as { tag_name: string }
++    const tag = release.tag_name
++
++    const platform = TARGET_PLATFORM === "windows-x64" ? "x86_64-pc-windows-msvc" : "x86_64-unknown-linux-gnu"
++    const url = `https://github.com/denoland/deno/releases/download/${tag}/deno-${platform}.zip`
++    const archive = path.join(DEPS_DIR, "deno.zip")
++    await downloadFile(url, archive)
++    const dist = path.join(DEPS_DIR, "lsp", "deno")
++    await fs.mkdir(dist, { recursive: true })
++    await extractZip(archive, dist)
++    await fs.unlink(archive)
++    
++    const binName = TARGET_PLATFORM === "windows-x64" ? "deno.exe" : "deno"
++    await fs.chmod(path.join(dist, binName), 0o755).catch(() => {})
++    
++    return tag
++  } catch (err) {
++    console.log(`Deno download failed: ${err}`)
++    return undefined
 +  }
 +}
 +
@@ -1008,6 +1018,7 @@ index 0000000..bd0c15c
 +  jdtls: string | undefined,
 +  eslint: string | undefined,
 +  elixir: string | undefined,
++  deno: string | undefined,
 +  treeSitterWasm: string[],
 +  npmVersions: Record<string, string>
 +): Promise<void> {
@@ -1031,6 +1042,7 @@ index 0000000..bd0c15c
 +      jdtls,
 +      vscodeEslint: eslint,
 +      elixirLs: elixir,
++      deno,
 +      treeSitterWasm,
 +      npmPackages: npmVersions,
 +    },
@@ -1095,6 +1107,7 @@ index 0000000..bd0c15c
 +    const jdtls = await downloadJdtls()
 +    const eslint = await downloadEslint()
 +    const elixir = await downloadElixir()
++    const deno = await downloadDeno()
 +    
 +    const treeSitterWasm = await downloadTreeSitterWasm()
 +    await downloadTreeSitterQueries()
@@ -1116,6 +1129,7 @@ index 0000000..bd0c15c
 +      jdtls,
 +      eslint,
 +      elixir,
++      deno,
 +      treeSitterWasm,
 +      npmVersions
 +    )
@@ -1174,7 +1188,7 @@ index 0000000..bd0c15c
 \ No newline at end of file
 diff --git a/script/onprem-plugins.json b/script/onprem-plugins.json
 new file mode 100644
-index 0000000..f0808c3
+index 0000000..0306bbc
 --- /dev/null
 +++ b/script/onprem-plugins.json
 @@ -0,0 +1,10 @@
@@ -1182,10 +1196,10 @@ index 0000000..f0808c3
 +  "$schema": "./onprem-plugins.schema.json",
 +  "plugins": [
 +    "opencode-anthropic-auth@0.0.13",
++    "oh-my-opencode-slim@latest",
 +    "superpowers@git+https://github.com/obra/superpowers.git",
 +    "@tarquinen/opencode-dcp@latest",
-+    "opencode-supermemory@latest",
-+    "github:JRedeker/opencode-morph-fast-apply"
++    "opencode-supermemory@latest"
 +  ]
 +}
 \ No newline at end of file
@@ -1219,7 +1233,7 @@ index 0000000..49762f1
 \ No newline at end of file
 diff --git a/script/package-onprem-bundle.ts b/script/package-onprem-bundle.ts
 new file mode 100644
-index 0000000..8388f06
+index 0000000..88ad34c
 --- /dev/null
 +++ b/script/package-onprem-bundle.ts
 @@ -0,0 +1,442 @@
@@ -1575,7 +1589,7 @@ index 0000000..8388f06
 +  const BUNDLE_DIR = `${BUNDLE_BASE_NAME}${suffix}`
 +  
 +  const isWindows = platform === "windows-x64"
-+  const ext = isWindows ? ".7z" : ".tar.zst"
++  const ext = isWindows ? ".7z" : ".tar.xz"
 +  const TARBALL_NAME = `${BUNDLE_DIR}${ext}`
 +
 +  console.log(`\n=== Creating archive (${variant}) ===`)
@@ -1585,7 +1599,7 @@ index 0000000..8388f06
 +
 +  const args = isWindows 
 +    ? ["7z", "a", "-t7z", "-mmt=on", TARBALL_NAME, BUNDLE_DIR]
-+    : ["tar", "--zstd", "-cf", TARBALL_NAME, BUNDLE_DIR]
++    : ["tar", "-cJf", TARBALL_NAME, BUNDLE_DIR]
 +
 +  const proc = Bun.spawn(args, {
 +    cwd: "dist",
@@ -1649,7 +1663,7 @@ index 0000000..8388f06
 +  for (const p of platforms) {
 +    const platform = p
 +    const baseName = `opencode-onprem-${platform}`
-+    const ext = platform === "windows-x64" ? ".7z" : ".tar.zst"
++    const ext = platform === "windows-x64" ? ".7z" : ".tar.xz"
 +    for (const variant of variants) {
 +      const suffix = variant === "baseline" ? "-baseline" : ""
 +      const stats = await fs.stat(`dist/${baseName}${suffix}${ext}`).catch(() => null)
@@ -1666,6 +1680,3 @@ index 0000000..8388f06
 +  process.exit(1)
 +})
 \ No newline at end of file
--- 
-2.47.3
-

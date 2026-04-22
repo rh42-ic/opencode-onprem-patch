@@ -1,7 +1,7 @@
 {
-  "version": "1.4.3",
-  "base": "opencode-1.4.3",
-  "created": "2026-04-14",
+  "version": "1.14.20",
+  "base": "opencode-1.14.20",
+  "created": "2026-04-22",
   "modifications": [
     {
       "file": "packages/opencode/src/onprem/index.ts",
@@ -61,7 +61,7 @@
       "patch": "0002-modify-source-files.patch"
     },
     {
-      "file": "packages/opencode/src/server/instance.ts",
+      "file": "packages/opencode/src/server/routes/ui.ts",
       "action": "modify",
       "description": "Serve static files from deps/app in onprem mode",
       "search_marker": "// onprem-fork:",

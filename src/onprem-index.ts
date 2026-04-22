@@ -1,6 +1,6 @@
 import path from "path"
 import { Flag } from "../flag/flag"
-import { Filesystem } from "../util/filesystem"
+import { Filesystem } from "../util"
 
 export namespace Onprem {
   export function isEnabled(): boolean {
@@ -40,7 +40,7 @@ export namespace Onprem {
     if (!appDir) return undefined
     const filePath = reqPath === "/" ? "/index.html" : reqPath
     const file = Bun.file(path.join(appDir, filePath))
-    if (await file.exists()) return { body: file, mime: Filesystem.mimeType(filePath) }
+    if (await file.exists()) return { body: file, mime: await Filesystem.mimeType(filePath) }
     const index = Bun.file(path.join(appDir, "index.html"))
     if (await index.exists()) return { body: index, mime: "text/html; charset=utf-8" }
     return undefined

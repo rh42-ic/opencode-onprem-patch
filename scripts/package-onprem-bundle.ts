@@ -350,7 +350,7 @@ async function createTarball(platform: string, variant: BuildVariant): Promise<v
   const BUNDLE_DIR = `${BUNDLE_BASE_NAME}${suffix}`
   
   const isWindows = platform === "windows-x64"
-  const ext = isWindows ? ".7z" : ".tar.zst"
+  const ext = isWindows ? ".7z" : ".tar.xz"
   const TARBALL_NAME = `${BUNDLE_DIR}${ext}`
 
   console.log(`\n=== Creating archive (${variant}) ===`)
@@ -360,7 +360,7 @@ async function createTarball(platform: string, variant: BuildVariant): Promise<v
 
   const args = isWindows 
     ? ["7z", "a", "-t7z", "-mmt=on", TARBALL_NAME, BUNDLE_DIR]
-    : ["tar", "--zstd", "-cf", TARBALL_NAME, BUNDLE_DIR]
+    : ["tar", "-cJf", TARBALL_NAME, BUNDLE_DIR]
 
   const proc = Bun.spawn(args, {
     cwd: "dist",
@@ -424,7 +424,7 @@ async function main() {
   for (const p of platforms) {
     const platform = p
     const baseName = `opencode-onprem-${platform}`
-    const ext = platform === "windows-x64" ? ".7z" : ".tar.zst"
+    const ext = platform === "windows-x64" ? ".7z" : ".tar.xz"
     for (const variant of variants) {
       const suffix = variant === "baseline" ? "-baseline" : ""
       const stats = await fs.stat(`dist/${baseName}${suffix}${ext}`).catch(() => null)
