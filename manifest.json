@@ -1,7 +1,7 @@
 {
-  "version": "1.14.20",
-  "base": "opencode-1.14.20",
-  "created": "2026-04-22",
+  "version": "1.14.22",
+  "base": "opencode-1.14.22",
+  "created": "2026-04-25",
   "modifications": [
     {
       "file": "packages/opencode/src/onprem/index.ts",
@@ -18,7 +18,7 @@
     {
       "file": "script/package-onprem-bundle.ts",
       "action": "create",
-      "description": "Package bundle for offline deployment",
+      "description": "Package bundle for offline deployment, with tarball sorting optimization",
       "patch": "0001-add-onprem-module-and-scripts.patch"
     },
     {

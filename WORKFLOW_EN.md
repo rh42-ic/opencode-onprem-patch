@@ -45,7 +45,7 @@ New files:
 |-----------|----------|
 | `packages/opencode/src/onprem/index.ts` | Core onprem module, provides offline resource resolution |
 | `script/download-onprem-deps.ts` | Pre-download dependencies script |
-| `script/package-onprem-bundle.ts` | Packaging script |
+| `script/package-onprem-bundle.ts` | Packaging script (includes file sorting optimization for better compression) |
 | `script/onprem-plugins.json` | Plugin configuration file |
 | `script/onprem-plugins.schema.json` | JSON Schema |
 

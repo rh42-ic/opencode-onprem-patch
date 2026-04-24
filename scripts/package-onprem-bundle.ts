@@ -358,9 +358,31 @@ async function createTarball(platform: string, variant: BuildVariant): Promise<v
   const tarballPath = path.join("dist", TARBALL_NAME)
   await fs.unlink(tarballPath).catch(() => {})
 
-  const args = isWindows 
-    ? ["7z", "a", "-t7z", "-mmt=on", TARBALL_NAME, BUNDLE_DIR]
-    : ["tar", "-I", "zstd -19 -T0 --long", "-cf", TARBALL_NAME, BUNDLE_DIR]
+  let args: string[]
+  if (isWindows) {
+    args = ["7z", "a", "-t7z", "-mmt=on", TARBALL_NAME, BUNDLE_DIR]
+  } else {
+    const glob = new Bun.Glob("**/*")
+    const entries = Array.from(glob.scanSync({ 
+      cwd: path.join("dist", BUNDLE_DIR), 
+      onlyFiles: false, 
+      dot: true 
+    }))
+
+    entries.sort((a, b) => {
+      const extA = path.extname(a).toLowerCase()
+      const extB = path.extname(b).toLowerCase()
+      if (extA !== extB) return extA.localeCompare(extB)
+      return a.localeCompare(b)
+    })
+
+    entries.unshift("")
+    const listContent = entries.map(e => path.join(BUNDLE_DIR, e)).join("\n")
+    const listFile = `${BUNDLE_DIR}.list`
+    await Bun.write(path.join("dist", listFile), listContent)
+
+    args = ["tar", "--no-recursion", "-I", "zstd -19 -T0 --long", "-cf", TARBALL_NAME, "-T", listFile]
+  }
 
   const proc = Bun.spawn(args, {
     cwd: "dist",

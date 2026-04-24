@@ -45,7 +45,7 @@ git apply /path/to/opencode-onprem-patch/patches/plugins-onprem.patch
 |----------|------|
 | `packages/opencode/src/onprem/index.ts` | 核心 onprem 模块，提供离线资源解析功能 |
 | `script/download-onprem-deps.ts` | 预下载依赖脚本 |
-| `script/package-onprem-bundle.ts` | 打包脚本 |
+| `script/package-onprem-bundle.ts` | 打包脚本（包含文件排序优化以提高压缩率） |
 | `script/onprem-plugins.json` | 插件配置文件 |
 | `script/onprem-plugins.schema.json` | JSON Schema |
 
