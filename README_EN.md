@@ -9,7 +9,7 @@ This directory contains **git patch files**, scripts, and documentation required
 If patching fails, the descriptive documentation should be sufficient for an AI Coding Agent to resolve conflicts. You can start by saying:
 
 ```
-Read the instructions in @/path/to/opencode-onprem-patch, apply patches to @/path/to/opencode-1.x.xx, and resolve any conflicts that occur.
+Read the instructions in @/path/to/opencode-onprem-patch, apply patches to @/path/to/opencode-1.14.22, and resolve any conflicts that occur.
 ```
 
 ## Directory Structure
@@ -80,7 +80,7 @@ bun run script/download-onprem-deps.ts --plugins-only
 ### 3. Package Bundle
 
 ```bash
-OPENCODE_VERSION=1.4.3 bun run script/package-onprem-bundle.ts
+OPENCODE_VERSION=1.14.22 bun run script/package-onprem-bundle.ts
 ```
 
 > **Note:** By default, dependencies for all platforms are bundled together. You can use the `--platforms=windows-x64` parameter to restrict the target platform for packaging.

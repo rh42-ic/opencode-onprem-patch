@@ -294,24 +294,26 @@ bun run script/download-onprem-deps.ts --plugins-only
 ### 3. Package Offline Bundle
  
  ```bash
- OPENCODE_VERSION=1.14.20 bun run script/package-onprem-bundle.ts
+ OPENCODE_VERSION=1.14.22 bun run script/package-onprem-bundle.ts
  ```
  
- > **Note:** The `OPENCODE_VERSION` environment variable sets the compiled version number. The packaging format for Linux has been updated to `tar.xz`.
- 
- ### 4. Deploy on Offline Machine
- 
- ```bash
- # Standard version (requires AVX2)
- tar -xJf opencode-onprem-linux-x64.tar.xz
- cd opencode-onprem-linux-x64
- ./opencode-onprem
- 
- # Or compatible version (no AVX2 required, for older CPUs)
- tar -xJf opencode-onprem-linux-x64-baseline.tar.xz
- cd opencode-onprem-linux-x64-baseline
- ./opencode-onprem
- ```
+ > **Note:** The `OPENCODE_VERSION` environment variable sets the compiled version number. The packaging format for Linux has been updated to `tar.zst`, using `zstd -19 --long` for maximum compression.
+
+ > **Note:** By default, the baseline version is no longer generated automatically. To include it, use the `--baseline` flag: `bun run script/package-onprem-bundle.ts --baseline`.
+  
+  ### 4. Deploy on Offline Machine
+  
+  ```bash
+  # Standard version (requires AVX2)
+  tar --zstd -xf opencode-onprem-linux-x64.tar.zst
+  cd opencode-onprem-linux-x64
+  ./opencode-onprem
+  
+  # Or compatible version (no AVX2 required, for older CPUs)
+  tar --zstd -xf opencode-onprem-linux-x64-baseline.tar.zst
+  cd opencode-onprem-linux-x64-baseline
+  ./opencode-onprem
+  ```
 
 ## Regenerating Patches After Version Upgrade
 

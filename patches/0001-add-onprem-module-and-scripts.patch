@@ -1233,10 +1233,10 @@ index 0000000..49762f1
 \ No newline at end of file
 diff --git a/script/package-onprem-bundle.ts b/script/package-onprem-bundle.ts
 new file mode 100644
-index 0000000..88ad34c
+index 0000000..d4d14eb
 --- /dev/null
 +++ b/script/package-onprem-bundle.ts
-@@ -0,0 +1,442 @@
+@@ -0,0 +1,444 @@
 +#!/usr/bin/env bun
 +
 +import { $ } from "bun"
@@ -1589,7 +1589,7 @@ index 0000000..88ad34c
 +  const BUNDLE_DIR = `${BUNDLE_BASE_NAME}${suffix}`
 +  
 +  const isWindows = platform === "windows-x64"
-+  const ext = isWindows ? ".7z" : ".tar.xz"
++  const ext = isWindows ? ".7z" : ".tar.zst"
 +  const TARBALL_NAME = `${BUNDLE_DIR}${ext}`
 +
 +  console.log(`\n=== Creating archive (${variant}) ===`)
@@ -1599,7 +1599,7 @@ index 0000000..88ad34c
 +
 +  const args = isWindows 
 +    ? ["7z", "a", "-t7z", "-mmt=on", TARBALL_NAME, BUNDLE_DIR]
-+    : ["tar", "-cJf", TARBALL_NAME, BUNDLE_DIR]
++    : ["tar", "-I", "zstd -19 -T0 --long", "-cf", TARBALL_NAME, BUNDLE_DIR]
 +
 +  const proc = Bun.spawn(args, {
 +    cwd: "dist",
@@ -1621,10 +1621,12 @@ index 0000000..88ad34c
 +async function main() {
 +  const args = process.argv.slice(2)
 +  const platformsArg = args.find(a => a.startsWith("--platforms="))
++  const includeBaseline = args.includes("--baseline")
 +  const platforms = platformsArg ? platformsArg.split("=")[1].split(",") : ["linux-x64", "windows-x64"]
 +
 +  console.log("=== OpenCode Onprem Bundle Packager ===")
 +  console.log(`Target platforms: ${platforms.join(", ")}`)
++  console.log(`Include baseline: ${includeBaseline}`)
 +
 +  // Verify all deps exist first
 +  for (const p of platforms) {
@@ -1640,7 +1642,7 @@ index 0000000..88ad34c
 +
 +  await buildAll()
 +
-+  const variants: BuildVariant[] = ["normal", "baseline"]
++  const variants: BuildVariant[] = includeBaseline ? ["normal", "baseline"] : ["normal"]
 +
 +  for (const p of platforms) {
 +    const platform = p
@@ -1663,7 +1665,7 @@ index 0000000..88ad34c
 +  for (const p of platforms) {
 +    const platform = p
 +    const baseName = `opencode-onprem-${platform}`
-+    const ext = platform === "windows-x64" ? ".7z" : ".tar.xz"
++    const ext = platform === "windows-x64" ? ".7z" : ".tar.zst"
 +    for (const variant of variants) {
 +      const suffix = variant === "baseline" ? "-baseline" : ""
 +      const stats = await fs.stat(`dist/${baseName}${suffix}${ext}`).catch(() => null)

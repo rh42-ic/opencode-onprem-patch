@@ -350,7 +350,7 @@ async function createTarball(platform: string, variant: BuildVariant): Promise<v
   const BUNDLE_DIR = `${BUNDLE_BASE_NAME}${suffix}`
   
   const isWindows = platform === "windows-x64"
-  const ext = isWindows ? ".7z" : ".tar.xz"
+  const ext = isWindows ? ".7z" : ".tar.zst"
   const TARBALL_NAME = `${BUNDLE_DIR}${ext}`
 
   console.log(`\n=== Creating archive (${variant}) ===`)
@@ -360,7 +360,7 @@ async function createTarball(platform: string, variant: BuildVariant): Promise<v
 
   const args = isWindows 
     ? ["7z", "a", "-t7z", "-mmt=on", TARBALL_NAME, BUNDLE_DIR]
-    : ["tar", "-cJf", TARBALL_NAME, BUNDLE_DIR]
+    : ["tar", "-I", "zstd -19 -T0 --long", "-cf", TARBALL_NAME, BUNDLE_DIR]
 
   const proc = Bun.spawn(args, {
     cwd: "dist",
@@ -382,10 +382,12 @@ async function createTarball(platform: string, variant: BuildVariant): Promise<v
 async function main() {
   const args = process.argv.slice(2)
   const platformsArg = args.find(a => a.startsWith("--platforms="))
+  const includeBaseline = args.includes("--baseline")
   const platforms = platformsArg ? platformsArg.split("=")[1].split(",") : ["linux-x64", "windows-x64"]
 
   console.log("=== OpenCode Onprem Bundle Packager ===")
   console.log(`Target platforms: ${platforms.join(", ")}`)
+  console.log(`Include baseline: ${includeBaseline}`)
 
   // Verify all deps exist first
   for (const p of platforms) {
@@ -401,7 +403,7 @@ async function main() {
 
   await buildAll()
 
-  const variants: BuildVariant[] = ["normal", "baseline"]
+  const variants: BuildVariant[] = includeBaseline ? ["normal", "baseline"] : ["normal"]
 
   for (const p of platforms) {
     const platform = p
@@ -424,7 +426,7 @@ async function main() {
   for (const p of platforms) {
     const platform = p
     const baseName = `opencode-onprem-${platform}`
-    const ext = platform === "windows-x64" ? ".7z" : ".tar.xz"
+    const ext = platform === "windows-x64" ? ".7z" : ".tar.zst"
     for (const variant of variants) {
       const suffix = variant === "baseline" ? "-baseline" : ""
       const stats = await fs.stat(`dist/${baseName}${suffix}${ext}`).catch(() => null)

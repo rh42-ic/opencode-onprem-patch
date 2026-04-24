@@ -294,21 +294,23 @@ bun run script/download-onprem-deps.ts --plugins-only
 ### 3. 打包离线 bundle
  
  ```bash
- OPENCODE_VERSION=1.14.20 bun run script/package-onprem-bundle.ts
+ OPENCODE_VERSION=1.14.22 bun run script/package-onprem-bundle.ts
  ```
  
- > **注意：** `OPENCODE_VERSION` 环境变量用于设置编译后的版本号。linux 版本的打包格式已更新为 `tar.xz`。
+ > **注意：** `OPENCODE_VERSION` 环境变量用于设置编译后的版本号。linux 版本的打包格式已更新为 `tar.zst`，并使用 `zstd -19 --long` 进行最高压缩。
+
+ > **注意：** 默认不再同时产生 baseline 版本。如果需要，请添加 `--baseline` 标志：`bun run script/package-onprem-bundle.ts --baseline`。
 
 ### 4. 在离线机器上部署
  
  ```bash
  # 标准版本（需要 AVX2）
- tar -xJf opencode-onprem-linux-x64.tar.xz
+ tar --zstd -xf opencode-onprem-linux-x64.tar.zst
  cd opencode-onprem-linux-x64
  ./opencode-onprem
  
  # 或兼容版本（无需 AVX2，适用于旧 CPU）
- tar -xJf opencode-onprem-linux-x64-baseline.tar.xz
+ tar --zstd -xf opencode-onprem-linux-x64-baseline.tar.zst
  cd opencode-onprem-linux-x64-baseline
  ./opencode-onprem
  ```

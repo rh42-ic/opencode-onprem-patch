@@ -1,5 +1,5 @@
 diff --git a/packages/opencode/src/lsp/server.ts b/packages/opencode/src/lsp/server.ts
-index 9182368..32d6853 100644
+index a0cb8fe..828839a 100644
 --- a/packages/opencode/src/lsp/server.ts
 +++ b/packages/opencode/src/lsp/server.ts
 @@ -14,6 +14,7 @@ import { which } from "../util/which"

@@ -9,7 +9,7 @@
 如果patch失败，描述性文档应该足够AI Coding Agent解决冲突。你可以一开始就：
 
 ```
-阅读 @/path/to/opencode-onprem-patch 说明，对 @/path/to/opencode-1.x.xx 进行patch，如果发生冲突则尝试手动进行补丁。
+阅读 @/path/to/opencode-onprem-patch 说明，对 @/path/to/opencode-1.14.22 进行patch，如果发生冲突则尝试手动进行补丁。
 ```
 
 ## 目录结构
@@ -80,7 +80,7 @@ bun run script/download-onprem-deps.ts --plugins-only
 ### 3. 打包
 
 ```bash
-OPENCODE_VERSION=1.4.3 bun run script/package-onprem-bundle.ts
+OPENCODE_VERSION=1.14.22 bun run script/package-onprem-bundle.ts
 ```
 
 > **注意：** 默认会同时打包所有平台的依赖。你也可以使用 `--platforms=windows-x64` 参数来限制打包的目标平台。
