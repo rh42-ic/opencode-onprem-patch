@@ -119,7 +119,7 @@ opencode-onprem.bat
 New files:
 - `packages/opencode/src/onprem/index.ts` - Core onprem module
 - `script/download-onprem-deps.ts` - Pre-download script
-- `script/package-onprem-bundle.ts` - Packaging script (includes file sorting optimization for better compression)
+- `script/package-onprem-bundle.ts` - Packaging script (includes extension extraction optimization and MIME sniffing for extension-less files to maximize compression)
 - `script/onprem-plugins.json` - Plugin configuration file
 - `script/onprem-plugins.schema.json` - JSON Schema
 

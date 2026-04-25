@@ -119,7 +119,7 @@ opencode-onprem.bat
 新增文件：
 - `packages/opencode/src/onprem/index.ts` - 核心 onprem 模块
 - `script/download-onprem-deps.ts` - 预下载脚本
-- `script/package-onprem-bundle.ts` - 打包脚本（包含文件排序优化以提高压缩率）
+- `script/package-onprem-bundle.ts` - 打包脚本（包含后缀名提取优化及针对无后缀文件的 MIME 类型嗅探，以进一步提高压缩率）
 - `script/onprem-plugins.json` - 插件配置文件
 - `script/onprem-plugins.schema.json` - JSON Schema
 

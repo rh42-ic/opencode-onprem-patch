@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 
 import { $ } from "bun"
+import { execSync } from "child_process"
 import fs from "fs/promises"
 import path from "path"
 
@@ -369,10 +370,28 @@ async function createTarball(platform: string, variant: BuildVariant): Promise<v
       dot: true 
     }))
 
+    const getRealExt = (f: string) => {
+      const m = path.basename(f).match(/(?<=.)\.([^./\\]+)(?:\.\d+)*$/)
+      return (m && !/^\d+$/.test(m[1])) ? "." + m[1].toLowerCase() : ""
+    }
+
+    const noExtFiles = entries.filter(e => !getRealExt(e))
+    const mimeMap = new Map<string, string>()
+    
+    if (noExtFiles.length > 0) {
+      console.log(`Sniffing MIME types for ${noExtFiles.length} files...`)
+      const listFile = path.join("dist", `${BUNDLE_DIR}.mime.list`)
+      await Bun.write(listFile, noExtFiles.map(e => path.join("dist", BUNDLE_DIR, e)).join("\0"))
+      const out = execSync(`xargs -0 file -b --mime-type < "${listFile}"`, { maxBuffer: 10 * 1024 * 1024 })
+      const mimes = out.toString().trim().split("\n")
+      noExtFiles.forEach((f, i) => mimeMap.set(f, mimes[i] || "application/octet-stream"))
+      await fs.unlink(listFile)
+    }
+
     entries.sort((a, b) => {
-      const extA = path.extname(a).toLowerCase()
-      const extB = path.extname(b).toLowerCase()
-      if (extA !== extB) return extA.localeCompare(extB)
+      const typeA = getRealExt(a) || mimeMap.get(a) || ""
+      const typeB = getRealExt(b) || mimeMap.get(b) || ""
+      if (typeA !== typeB) return typeA.localeCompare(typeB)
       return a.localeCompare(b)
     })
 

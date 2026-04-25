@@ -18,7 +18,7 @@
     {
       "file": "script/package-onprem-bundle.ts",
       "action": "create",
-      "description": "Package bundle for offline deployment, with tarball sorting optimization",
+      "description": "Package bundle for offline deployment, with tarball sorting (extension extraction & MIME sniffing) optimization",
       "patch": "0001-add-onprem-module-and-scripts.patch"
     },
     {
