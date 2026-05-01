@@ -1,21 +1,3 @@
-From c94af777f6dad841c7dd8cbc812c43d0c9979221 Mon Sep 17 00:00:00 2001
-From: rh42-ic <218984493+rh42-ic@users.noreply.github.com>
-Date: Fri, 1 May 2026 20:57:51 +0800
-Subject: [PATCH] add onprem module and scripts
-
----
- packages/opencode/src/onprem/index.ts | 159 ++++++
- script/download-onprem-deps.ts        | 745 ++++++++++++++++++++++++++
- script/onprem-plugins.json            |  10 +
- script/onprem-plugins.schema.json     |  21 +
- script/package-onprem-bundle.ts       | 532 ++++++++++++++++++
- 5 files changed, 1467 insertions(+)
- create mode 100644 packages/opencode/src/onprem/index.ts
- create mode 100644 script/download-onprem-deps.ts
- create mode 100644 script/onprem-plugins.json
- create mode 100644 script/onprem-plugins.schema.json
- create mode 100644 script/package-onprem-bundle.ts
-
 diff --git a/packages/opencode/src/onprem/index.ts b/packages/opencode/src/onprem/index.ts
 new file mode 100644
 index 0000000..d33a595
@@ -1516,6 +1498,3 @@ index 0000000..658ee7f
 +  process.exit(1)
 +})
 \ No newline at end of file
--- 
-2.47.3
-

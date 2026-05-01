@@ -1,16 +1,3 @@
-From 9a44f8ab08eddb14da0d65b8616c8f7258193e8d Mon Sep 17 00:00:00 2001
-From: rh42-ic <218984493+rh42-ic@users.noreply.github.com>
-Date: Fri, 1 May 2026 19:07:51 +0800
-Subject: [PATCH] 0002
-
----
- packages/core/src/flag/flag.ts            |  4 +++
- packages/opencode/script/build.ts         | 14 +++++++----
- packages/opencode/src/file/ripgrep.ts     | 11 +++++++++
- packages/opencode/src/provider/models.ts  | 30 ++++++++++++++++++++++-
- packages/opencode/src/server/routes/ui.ts | 21 ++++++++++++++--
- 5 files changed, 72 insertions(+), 8 deletions(-)
-
 diff --git a/packages/core/src/flag/flag.ts b/packages/core/src/flag/flag.ts
 index a3b8133..8a07103 100644
 --- a/packages/core/src/flag/flag.ts
@@ -197,6 +184,3 @@ index 403d85d..b90f26a 100644
      if (embeddedWebUI) {
        const match = embeddedWebUI[path.replace(/^\//, "")] ?? embeddedWebUI["index.html"] ?? null
        if (!match) return HttpServerResponse.jsonUnsafe({ error: "Not Found" }, { status: 404 })
--- 
-2.47.3
-

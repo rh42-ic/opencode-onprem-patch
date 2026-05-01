@@ -1,0 +1,97 @@
+name: Build Onprem Release
+
+on:
+  push:
+    tags:
+      - 'v*-onprem' # 匹配类似 v1.14.31-onprem 的 tag
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # 允许创建 Release 和上传产物
+    
+    steps:
+      - name: Checkout onprem-patch repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Parse Versions and Create Release Note
+        id: vars
+        run: |
+          TAG_NAME=${GITHUB_REF_NAME} # e.g. v1.14.31-onprem
+          RAW_TAG=${TAG_NAME#v} # e.g. 1.14.31-onprem
+          UPSTREAM_VER=${RAW_TAG%-onprem} # e.g. 1.14.31
+          
+          echo "TAG_NAME=$TAG_NAME" >> $GITHUB_ENV
+          echo "UPSTREAM_VER=$UPSTREAM_VER" >> $GITHUB_ENV
+          echo "OPENCODE_VERSION=$RAW_TAG" >> $GITHUB_ENV
+          
+          # 生成 Release 说明
+          cat <<EOF > release_body.md
+          同步更新到 v${UPSTREAM_VER} 版本，详细更新参阅 [OpenCode v${UPSTREAM_VER} Release](https://github.com/anomalyco/opencode/releases/tag/v${UPSTREAM_VER})。
+          
+          Synchronized update to version v${UPSTREAM_VER}, for detailed updates see [OpenCode v${UPSTREAM_VER} Release](https://github.com/anomalyco/opencode/releases/tag/v${UPSTREAM_VER}).
+          EOF
+          
+          echo "Building onprem version $TAG_NAME based on upstream v$UPSTREAM_VER"
+
+      - name: 1. Download Upstream & Setup Git
+        run: |
+          mkdir upstream
+          # 下载对应的 upstream vX.XX.XX 源码
+          curl -L "https://github.com/anomalyco/opencode/archive/refs/tags/v${UPSTREAM_VER}.tar.gz" | tar -xz -C upstream --strip-components=1
+          
+          # 初始化临时 Git 管理
+          cd upstream
+          git init
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .
+          git commit -m "chore: init upstream v${UPSTREAM_VER}"
+
+      - name: 2. Apply Patches
+        run: |
+          cd upstream
+          # 按顺序应用位于仓库根目录 patches/ 下的补丁
+          git apply ../patches/0001-add-onprem-module-and-scripts.patch
+          git apply ../patches/0002-modify-source-files.patch
+          git apply ../patches/lsp-server-onprem.patch
+          git apply ../patches/parsers-config-onprem.patch
+          git apply ../patches/plugins-onprem.patch
+          
+          git add .
+          git commit -m "chore: apply onprem patches"
+
+      - name: 3. Install Dependencies
+        run: |
+          cd upstream
+          bun install
+
+      - name: 4. Pre-download Dependencies (All Platforms)
+        run: |
+          cd upstream
+          # 执行全平台预下载
+          bun run script/download-onprem-deps.ts --platforms=linux-x64-musl,linux-x64-gnu,linux-arm64-musl,linux-arm64-gnu,windows-x64,darwin-x64,darwin-arm64
+
+      - name: 5. Package Bundle (All Platforms, No Baseline)
+        run: |
+          cd upstream
+          # 打包全平台，不添加 --baseline 参数
+          # OPENCODE_VERSION 已在环境变量中被设置为 x.xx.xx-onprem
+          bun run script/package-onprem-bundle.ts --platforms=linux-x64-musl,linux-x64-gnu,linux-arm64-musl,linux-arm64-gnu,windows-x64,darwin-x64,darwin-arm64
+
+      - name: 6. Publish to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "OpenCode Onprem ${{ env.TAG_NAME }}"
+          body_path: release_body.md
+          draft: false
+          prerelease: false
+          files: |
+            upstream/dist/opencode-onprem-*.tar.zst
+            upstream/dist/opencode-onprem-*.7z
