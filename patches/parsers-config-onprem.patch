@@ -1,6 +1,6 @@
-diff --git a/../clean-upstream/packages/opencode/parsers-config.ts b/packages/opencode/parsers-config.ts
+diff --git a/packages/opencode/parsers-config.ts b/packages/opencode/parsers-config.ts
 index b4951af..9314e44 100644
---- a/../clean-upstream/packages/opencode/parsers-config.ts
+--- a/packages/opencode/parsers-config.ts
 +++ b/packages/opencode/parsers-config.ts
 @@ -1,290 +1,343 @@
 -export default {

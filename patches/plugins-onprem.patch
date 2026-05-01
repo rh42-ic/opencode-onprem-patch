@@ -1,6 +1,6 @@
-diff --git a/../clean-upstream/packages/opencode/src/plugin/shared.ts b/packages/opencode/src/plugin/shared.ts
+diff --git a/packages/opencode/src/plugin/shared.ts b/packages/opencode/src/plugin/shared.ts
 index 1a51935..2214f9e 100644
---- a/../clean-upstream/packages/opencode/src/plugin/shared.ts
+--- a/packages/opencode/src/plugin/shared.ts
 +++ b/packages/opencode/src/plugin/shared.ts
 @@ -5,6 +5,7 @@ import semver from "semver"
  import { Filesystem } from "@/util/filesystem"

@@ -64,10 +64,16 @@ Tree-sitter WASM 和查询文件离线加载。
 
 ```bash
 bun run script/download-onprem-deps.ts
+# 如需构建其它平台 (gnu, macOS, Windows, arm64 等)，请使用：
+# bun run script/download-onprem-deps.ts --platforms=linux-x64-musl,linux-x64-gnu,windows-x64,darwin-x64,darwin-arm64,linux-arm64-musl,linux-arm64-gnu
 ```
 
 ### 2. 打包离线 bundle
 
 ```bash
 OPENCODE_VERSION=1.14.31 bun run script/package-onprem-bundle.ts
+# 如需同时打包所有平台，请使用：
+# OPENCODE_VERSION=1.14.31 bun run script/package-onprem-bundle.ts --platforms=linux-x64-musl,linux-x64-gnu,windows-x64,darwin-x64,darwin-arm64,linux-arm64-musl,linux-arm64-gnu
 ```
+
+推荐的 Linux 离线包为静态编译的 `musl` (`--platforms=linux-x64-musl`) 版本。

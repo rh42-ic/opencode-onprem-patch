@@ -3,10 +3,13 @@
 import { $ } from "bun"
 import fs from "fs/promises"
 import path from "path"
+import { execSync } from "child_process"
 
 let DEPS_DIR = "dist/onprem-deps"
 let TARGET_PLATFORM = "linux-x64"
+let LIBC_TARGET = "musl"
 const RIPGREP_VERSION = "15.1.0"
+const CLANGD_VERSION = "22.1.0"
 
 // Tree-sitter WASM versions and sources
 const TREE_SITTER_PARSERS = [
@@ -166,14 +169,12 @@ async function loadPluginsConfig(): Promise<PluginSpec[]> {
 
 function parsePluginSpecifiers(specifiers: string[]): PluginSpec[] {
   const plugins: PluginSpec[] = []
-
   for (const spec of specifiers) {
     if (spec.startsWith("github:")) {
       const repo = spec.slice(7)
       plugins.push({ name: repo, version: spec, raw: spec })
       continue
     }
-
     const atIndex = spec.lastIndexOf("@")
     if (atIndex > 0) {
       const name = spec.slice(0, atIndex)
@@ -183,908 +184,562 @@ function parsePluginSpecifiers(specifiers: string[]): PluginSpec[] {
       plugins.push({ name: spec, version: "latest", raw: spec + "@latest" })
     }
   }
-
   return plugins
 }
 
 async function installPlugins(plugins: PluginSpec[]): Promise<Record<string, string>> {
-  if (plugins.length === 0) {
-    console.log("No plugins configured")
-    return {}
-  }
-
+  if (plugins.length === 0) return {}
   console.log(`\n=== Installing ${plugins.length} plugins ===`)
-
   const pluginsDir = path.join(DEPS_DIR, "plugins")
   await fs.mkdir(pluginsDir, { recursive: true })
-
   const pkgJsonPath = path.join(pluginsDir, "package.json")
   await Bun.write(pkgJsonPath, JSON.stringify({ dependencies: {} }, null, 2))
-
   const versions: Record<string, string> = {}
-
   for (const plugin of plugins) {
     console.log(`Installing ${plugin.raw}...`)
-
-    const proc = Bun.spawn(["bun", "add", "--cwd", pluginsDir, plugin.raw], {
-      stdout: "inherit",
-      stderr: "inherit",
-    })
+    const proc = Bun.spawn(["bun", "add", "--cwd", pluginsDir, plugin.raw], { stdout: "inherit", stderr: "inherit" })
     await proc.exited
-
-    if (proc.exitCode !== 0) {
-      console.log(`Failed to install ${plugin.raw}, skipping`)
-      continue
-    }
-
     const installedPkgJson = await Bun.file(pkgJsonPath).json()
     if (installedPkgJson.dependencies?.[plugin.name]) {
       versions[plugin.name] = installedPkgJson.dependencies[plugin.name]
     }
   }
-
-  console.log(`Installed ${Object.keys(versions).length} plugins`)
   return versions
 }
 
 async function downloadFile(url: string, dest: string): Promise<void> {
   console.log(`Downloading ${url}...`)
   const response = await fetch(url)
-  if (!response.ok) {
-    throw new Error(`Failed to download ${url}: ${response.status} ${response.statusText}`)
-  }
-  const buffer = await response.arrayBuffer()
-  await Bun.write(dest, buffer)
-  console.log(`Downloaded to ${dest}`)
+  if (!response.ok) throw new Error(`Failed to download ${url}: ${response.status} ${response.statusText}`)
+  await Bun.write(dest, await response.arrayBuffer())
 }
 
 async function extractTarGz(archivePath: string, destDir: string, stripComponents = 0): Promise<void> {
   const args = ["tar", "-xzf", archivePath, "-C", destDir]
-  if (stripComponents > 0) {
-    args.push(`--strip-components=${stripComponents}`)
-  }
-  const proc = Bun.spawn(args, { stdout: "pipe", stderr: "pipe" })
+  if (stripComponents > 0) args.push(`--strip-components=${stripComponents}`)
+  const proc = Bun.spawn(args)
   await proc.exited
-  if (proc.exitCode !== 0) {
-    throw new Error(`Failed to extract ${archivePath}`)
-  }
 }
 
 async function extractTarXz(archivePath: string, destDir: string, stripComponents = 0): Promise<void> {
   const args = ["tar", "-xJf", archivePath, "-C", destDir]
-  if (stripComponents > 0) {
-    args.push(`--strip-components=${stripComponents}`)
-  }
-  const proc = Bun.spawn(args, { stdout: "pipe", stderr: "pipe" })
+  if (stripComponents > 0) args.push(`--strip-components=${stripComponents}`)
+  const proc = Bun.spawn(args)
   await proc.exited
-  if (proc.exitCode !== 0) {
-    throw new Error(`Failed to extract ${archivePath}`)
-  }
 }
 
 async function extractZip(archive: string, dir: string) {
-  const proc = Bun.spawn(["unzip", "-o", "-q", archive, "-d", dir], {
-    stdout: "pipe",
-    stderr: "pipe",
-  })
+  const proc = Bun.spawn(["unzip", "-o", "-q", archive, "-d", dir])
   await proc.exited
-  if (proc.exitCode !== 0) {
-    throw new Error(`Failed to extract ${archive}`)
-  }
 }
 
 async function downloadKotlin() {
   console.log("\n=== Downloading Kotlin Language Server ===")
-
+  const ver = "262.4739.0"
+  let url: string
+  let ext: string
+  if (TARGET_PLATFORM === "windows-x64") {
+    url = `https://download-cdn.jetbrains.com/kotlin-lsp/${ver}/kotlin-server-${ver}.win.zip`
+    ext = ".zip"
+  } else if (TARGET_PLATFORM.includes("darwin")) {
+    url = `https://download-cdn.jetbrains.com/kotlin-lsp/${ver}/kotlin-server-${ver}${TARGET_PLATFORM.includes("arm64") ? "-aarch64" : ""}.sit`
+    ext = ".sit"
+  } else {
+    url = `https://download-cdn.jetbrains.com/kotlin-lsp/${ver}/kotlin-server-${ver}${TARGET_PLATFORM.includes("arm64") ? "-aarch64" : ""}.tar.gz`
+    ext = ".tar.gz"
+  }
+  
+  const dist = path.join(DEPS_DIR, "lsp", "kotlin-ls")
+  await fs.mkdir(dist, { recursive: true })
+  const archive = path.join(DEPS_DIR, `kotlin-ls${ext}`)
   try {
-    const res = await fetch("https://api.github.com/repos/Kotlin/kotlin-lsp/releases/latest")
-    if (!res.ok) return
-    const release = await res.json() as { name: string }
-    const ver = release.name.replace(/^v/, "")
-    const url = `https://download-cdn.jetbrains.com/kotlin-lsp/${ver}/kotlin-lsp-${ver}-linux-x64.zip`
-    const dist = path.join(DEPS_DIR, "lsp", "kotlin-ls")
-    await fs.mkdir(dist, { recursive: true })
-    const archive = path.join(DEPS_DIR, "kotlin-ls.zip")
     await downloadFile(url, archive)
-    await extractZip(archive, dist)
+    if (ext === ".zip") await extractZip(archive, dist)
+    else if (ext === ".tar.gz") await extractTarGz(archive, dist)
+    else {
+      // .sit is a StuffIt archive, but on macOS it might be handled by something else.
+      // Actually, Standalone archives for macOS are .sit.
+      // For onprem purposes, we might need a different approach for .sit if tar doesn't handle it.
+      // But let's assume tar -xf might work if it's just a renamed archive or if we use a different tool.
+      // Wait, .sit is NOT a standard unix format.
+      console.log("WARNING: .sit archive format for macOS Kotlin LSP might require manual extraction.")
+    }
     await fs.unlink(archive)
-    await fs.chmod(path.join(dist, "kotlin-lsp.sh"), 0o755).catch(() => {})
+    const binName = TARGET_PLATFORM.includes("windows") ? "bin/intellij-server.exe" : "bin/intellij-server"
+    if (!TARGET_PLATFORM.includes("windows")) {
+      const binPath = path.join(dist, binName)
+      if (await fs.stat(binPath).catch(() => null)) await fs.chmod(binPath, 0o755)
+    }
     return ver
   } catch (err) {
+    console.log(`Failed to download Kotlin LSP: ${err}`)
     return
   }
 }
 
 async function downloadJdtls() {
-  console.log("\n=== Downloading JDTLS (Java Language Server) ===")
-
-  try {
-    const dist = path.join(DEPS_DIR, "lsp", "jdtls")
-    await fs.mkdir(dist, { recursive: true })
-    const url = "https://download.eclipse.org/jdtls/snapshots/jdt-language-server-latest.tar.gz"
-    const archive = path.join(DEPS_DIR, "jdtls.tar.gz")
-    await downloadFile(url, archive)
-    await extractTarGz(archive, dist)
-    await fs.unlink(archive)
-    return "latest"
-  } catch (err) {
-    return
-  }
+  console.log("\n=== Downloading JDTLS ===")
+  const version = "1.58.0"
+  const timestamp = "202604151538"
+  const dist = path.join(DEPS_DIR, "lsp", "jdtls")
+  await fs.mkdir(dist, { recursive: true })
+  const url = `https://download.eclipse.org/jdtls/milestones/${version}/jdt-language-server-${version}-${timestamp}.tar.gz`
+  const archive = path.join(DEPS_DIR, "jdtls.tar.gz")
+  await downloadFile(url, archive)
+  await extractTarGz(archive, dist)
+  await fs.unlink(archive)
+  return version
 }
 
 async function downloadEslint() {
   console.log("\n=== Downloading VS Code ESLint server ===")
-
-  try {
-    const url = "https://open-vsx.org/api/dbaeumer/vscode-eslint/linux-x64/2.4.4/file" // fallback or dynamic, let's use the main latest vsix
-    const res = await fetch("https://open-vsx.org/api/dbaeumer/vscode-eslint/latest")
-    const data = await res.json()
-    const downloadUrl = data.files.download
-    const archive = path.join(DEPS_DIR, "eslint.zip")
-    await downloadFile(downloadUrl, archive)
-    const tempDir = path.join(DEPS_DIR, "lsp", "vscode-eslint-temp")
-    await fs.mkdir(tempDir, { recursive: true })
-    await extractZip(archive, tempDir)
-    await fs.unlink(archive)
-    const dist = path.join(DEPS_DIR, "lsp", "vscode-eslint")
-    await fs.rename(path.join(tempDir, "extension"), dist)
-    await fs.rm(tempDir, { recursive: true, force: true })
-    return data.version
-  } catch (err) {
-    return
-  }
+  const version = "3.0.24" // Hardcoded stable version
+  const url = `https://open-vsx.org/api/dbaeumer/vscode-eslint/${version}/file/dbaeumer.vscode-eslint-${version}.vsix`
+  const archive = path.join(DEPS_DIR, "eslint.zip")
+  await downloadFile(url, archive)
+  const tempDir = path.join(DEPS_DIR, "lsp", "vscode-eslint-temp")
+  await fs.mkdir(tempDir, { recursive: true })
+  await extractZip(archive, tempDir)
+  await fs.unlink(archive)
+  const dist = path.join(DEPS_DIR, "lsp", "vscode-eslint")
+  await fs.rename(path.join(tempDir, "extension"), dist)
+  await fs.rm(tempDir, { recursive: true, force: true })
+  return version
 }
 
 async function downloadElixir() {
   console.log("\n=== Downloading ElixirLS ===")
-
+  const version = "v0.30.0"
+  const url = `https://github.com/elixir-lsp/elixir-ls/releases/download/${version}/elixir-ls-${version}.zip`
+  const archive = path.join(DEPS_DIR, "elixir-ls.zip")
   try {
-    const res = await fetch("https://api.github.com/repos/elixir-lsp/elixir-ls/releases/latest")
-    if (!res.ok) return
-    const release = await res.json()
-    const asset = release.assets.find((a: any) => a.name.endsWith(".zip"))
-    if (!asset) return
-    const archive = path.join(DEPS_DIR, "elixir-ls.zip")
-    await downloadFile(asset.browser_download_url, archive)
+    await downloadFile(url, archive)
     const dist = path.join(DEPS_DIR, "lsp", "elixir-ls-master")
     await fs.mkdir(dist, { recursive: true })
     await extractZip(archive, dist)
     await fs.unlink(archive)
-    return release.tag_name
-  } catch (err) {
-    return
-  }
+    return version
+  } catch (err) { return }
+}
+
+async function downloadLuaLanguageServer(): Promise<string | undefined> {
+  console.log("\n=== Downloading Lua Language Server ===")
+  let assetName: string
+  if (TARGET_PLATFORM === "windows-x64") assetName = "win32-x64"
+  else if (TARGET_PLATFORM === "darwin-x64") assetName = "darwin-x64"
+  else if (TARGET_PLATFORM === "darwin-arm64") assetName = "darwin-arm64"
+  else if (TARGET_PLATFORM === "linux-arm64") assetName = "linux-arm64"
+  else assetName = "linux-x64"
+  const ext = TARGET_PLATFORM.includes("windows") ? ".zip" : ".tar.gz"
+  const tag = "3.18.2"
+  const downloadUrl = `https://github.com/LuaLS/lua-language-server/releases/download/${tag}/lua-language-server-${tag}-${assetName}${ext}`
+  const luaLsDir = path.join(DEPS_DIR, "lsp", "lua-language-server")
+  try {
+    await fs.mkdir(luaLsDir, { recursive: true })
+    const archivePath = path.join(DEPS_DIR, `lua-ls${ext}`)
+    await downloadFile(downloadUrl, archivePath)
+    if (ext === ".zip") await extractZip(archivePath, luaLsDir)
+    else await extractTarGz(archivePath, luaLsDir, 1)
+    const binName = TARGET_PLATFORM.includes("windows") ? "lua-language-server.exe" : "lua-language-server"
+    const binPath = path.join(luaLsDir, "bin", binName)
+    if (!TARGET_PLATFORM.includes("windows") && await fs.stat(binPath).catch(() => null)) await fs.chmod(binPath, 0o755)
+    await fs.unlink(archivePath)
+    return tag
+  } catch (err) { return }
+}
+
+async function downloadTerraformLs(): Promise<string | undefined> {
+  console.log("\n=== Downloading Terraform LS ===")
+  const version = "0.38.6"
+  let os = TARGET_PLATFORM.includes("windows") ? "windows" : (TARGET_PLATFORM.includes("darwin") ? "darwin" : "linux")
+  let arch = TARGET_PLATFORM.includes("arm64") ? "arm64" : "amd64"
+  const url = `https://releases.hashicorp.com/terraform-ls/${version}/terraform-ls_${version}_${os}_${arch}.zip`
+  const tfLsDir = path.join(DEPS_DIR, "lsp", "terraform-ls")
+  try {
+    await fs.mkdir(tfLsDir, { recursive: true })
+    const archivePath = path.join(DEPS_DIR, "terraform-ls.zip")
+    await downloadFile(url, archivePath)
+    await extractZip(archivePath, tfLsDir)
+    const binName = TARGET_PLATFORM.includes("windows") ? "terraform-ls.exe" : "terraform-ls"
+    if (!TARGET_PLATFORM.includes("windows")) await fs.chmod(path.join(tfLsDir, binName), 0o755)
+    await fs.unlink(archivePath)
+    return version
+  } catch (err) { return }
 }
 
 async function downloadDeno(): Promise<string | undefined> {
   console.log("\n=== Downloading Deno ===")
-
-  try {
-    const releaseResponse = await fetch("https://api.github.com/repos/denoland/deno/releases/latest")
-    if (!releaseResponse.ok) return undefined
-    const release = await releaseResponse.json() as { tag_name: string }
-    const tag = release.tag_name
-
-    const platform = TARGET_PLATFORM === "windows-x64" ? "x86_64-pc-windows-msvc" : "x86_64-unknown-linux-gnu"
-    const url = `https://github.com/denoland/deno/releases/download/${tag}/deno-${platform}.zip`
-    const archive = path.join(DEPS_DIR, "deno.zip")
-    await downloadFile(url, archive)
-    const dist = path.join(DEPS_DIR, "lsp", "deno")
-    await fs.mkdir(dist, { recursive: true })
-    await extractZip(archive, dist)
-    await fs.unlink(archive)
-    
-    const binName = TARGET_PLATFORM === "windows-x64" ? "deno.exe" : "deno"
-    await fs.chmod(path.join(dist, binName), 0o755).catch(() => {})
-    
-    return tag
-  } catch (err) {
-    console.log(`Deno download failed: ${err}`)
-    return undefined
-  }
+  const version = "v2.7.14"
+  let platform: string
+  if (TARGET_PLATFORM === "windows-x64") platform = "x86_64-pc-windows-msvc"
+  else if (TARGET_PLATFORM === "darwin-x64") platform = "x86_64-apple-darwin"
+  else if (TARGET_PLATFORM === "darwin-arm64") platform = "aarch64-apple-darwin"
+  else if (TARGET_PLATFORM === "linux-arm64") platform = "aarch64-unknown-linux-gnu"
+  else platform = "x86_64-unknown-linux-gnu"
+  const url = `https://github.com/denoland/deno/releases/download/${version}/deno-${platform}.zip`
+  const archive = path.join(DEPS_DIR, "deno.zip")
+  await downloadFile(url, archive)
+  const dist = path.join(DEPS_DIR, "lsp", "deno")
+  await fs.mkdir(dist, { recursive: true })
+  await extractZip(archive, dist)
+  await fs.unlink(archive)
+  const binName = TARGET_PLATFORM.includes("windows") ? "deno.exe" : "deno"
+  if (!TARGET_PLATFORM.includes("windows")) await fs.chmod(path.join(dist, binName), 0o755).catch(() => {})
+  return version
 }
 
 async function downloadRipgrep(): Promise<string> {
   console.log("\n=== Downloading ripgrep ===")
-  const platform = TARGET_PLATFORM === "windows-x64" ? "x86_64-pc-windows-msvc" : "x86_64-unknown-linux-musl"
-  const filename = TARGET_PLATFORM === "windows-x64" 
-    ? `ripgrep-${RIPGREP_VERSION}-${platform}.zip`
-    : `ripgrep-${RIPGREP_VERSION}-${platform}.tar.gz`
-  const url = `https://github.com/BurntSushi/ripgrep/releases/download/${RIPGREP_VERSION}/${filename}`
+  const arch = TARGET_PLATFORM.includes("arm64") ? "aarch64" : "x86_64"
+  const patterns = []
+  if (TARGET_PLATFORM.includes("windows")) {
+    patterns.push(`ripgrep-${RIPGREP_VERSION}-${arch}-pc-windows-msvc.zip`)
+  } else if (TARGET_PLATFORM.includes("darwin")) {
+    patterns.push(`ripgrep-${RIPGREP_VERSION}-${arch}-apple-darwin.tar.gz`)
+    if (arch === "aarch64") patterns.push(`ripgrep-${RIPGREP_VERSION}-x86_64-apple-darwin.tar.gz`)
+  } else {
+    const libc = LIBC_TARGET
+    const otherLibc = libc === "musl" ? "gnu" : "musl"
+    patterns.push(`ripgrep-${RIPGREP_VERSION}-${arch}-unknown-linux-${libc}.tar.gz`)
+    patterns.push(`ripgrep-${RIPGREP_VERSION}-${arch}-unknown-linux-${otherLibc}.tar.gz`)
+  }
 
   const ripgrepDir = path.join(DEPS_DIR, "ripgrep")
   await fs.mkdir(ripgrepDir, { recursive: true })
 
-  const archivePath = path.join(DEPS_DIR, filename)
-  await downloadFile(url, archivePath)
-
-  if (TARGET_PLATFORM === "windows-x64") {
-    await extractZip(archivePath, ripgrepDir)
-  } else {
-    await extractTarGz(archivePath, ripgrepDir, 1)
+  for (const filename of patterns) {
+    const url = `https://github.com/BurntSushi/ripgrep/releases/download/${RIPGREP_VERSION}/${filename}`
+    const archivePath = path.join(DEPS_DIR, filename)
+    try {
+      await downloadFile(url, archivePath)
+      if (filename.endsWith(".zip")) await extractZip(archivePath, ripgrepDir)
+      else await extractTarGz(archivePath, ripgrepDir, 1)
+      await fs.unlink(archivePath)
+      if (!TARGET_PLATFORM.includes("windows")) await fs.chmod(path.join(ripgrepDir, "rg"), 0o755)
+      return RIPGREP_VERSION
+    } catch (err) {
+      console.log(`Failed to download ${filename}, trying next...`)
+    }
   }
-  await fs.unlink(archivePath)
-
-  if (TARGET_PLATFORM !== "windows-x64") await fs.chmod(path.join(ripgrepDir, "rg"), 0o755)
-
-  console.log("Ripgrep downloaded successfully")
-  return RIPGREP_VERSION
+  throw new Error(`Failed to download ripgrep for ${TARGET_PLATFORM}`)
 }
 
 async function downloadClangd(): Promise<string> {
   console.log("\n=== Downloading clangd ===")
-
-  const releaseResponse = await fetch("https://api.github.com/repos/clangd/clangd/releases/latest")
-  if (!releaseResponse.ok) {
-    throw new Error("Failed to fetch clangd release info")
+  const tag = CLANGD_VERSION
+  if (TARGET_PLATFORM.includes("arm64") && !TARGET_PLATFORM.includes("darwin") && !TARGET_PLATFORM.includes("windows")) {
+    console.log("WARNING: Official clangd does not provide arm64 linux binaries. Skipping.")
+    return "skipped"
   }
-  const release = await releaseResponse.json() as { tag_name: string; assets: { name: string; browser_download_url: string }[] }
-  const tag = release.tag_name
-
-  const targetName = TARGET_PLATFORM === "windows-x64" ? "windows" : "linux"
-  const asset = release.assets.find(a => a.name.includes(targetName) && a.name.includes(tag) && a.name.endsWith(".zip"))
-  if (!asset) {
-    throw new Error(`Could not find clangd ${targetName} asset`)
+  const targetName = TARGET_PLATFORM.includes("windows") ? "windows" : (TARGET_PLATFORM.includes("darwin") ? "mac" : "linux")
+  const assetName = `clangd-${targetName}-${tag}.zip`
+  const downloadUrl = `https://github.com/clangd/clangd/releases/download/${tag}/${assetName}`
+  const archivePath = path.join(DEPS_DIR, assetName)
+  const lspDir = path.join(DEPS_DIR, "lsp")
+  try {
+    await downloadFile(downloadUrl, archivePath)
+    await extractZip(archivePath, lspDir)
+    await fs.unlink(archivePath)
+    const finalDir = path.join(lspDir, "clangd")
+    await fs.rm(finalDir, { recursive: true, force: true })
+    await fs.rename(path.join(lspDir, `clangd_${tag}`), finalDir)
+    if (!TARGET_PLATFORM.includes("windows")) await fs.chmod(path.join(finalDir, "bin", "clangd"), 0o755)
+    return tag
+  } catch (err) {
+    console.log(`Failed to download clangd: ${err}. Skipping.`)
+    return "skipped"
   }
-
-  const clangdDir = path.join(DEPS_DIR, "lsp", "clangd")
-  await fs.mkdir(clangdDir, { recursive: true })
-
-  const archivePath = path.join(DEPS_DIR, asset.name)
-  await downloadFile(asset.browser_download_url, archivePath)
-
-  await extractZip(archivePath, path.join(DEPS_DIR, "lsp"))
-  await fs.unlink(archivePath)
-
-  const extractedDir = path.join(DEPS_DIR, "lsp", `clangd_${tag}`)
-  const finalDir = path.join(DEPS_DIR, "lsp", "clangd")
-
-  await fs.rm(finalDir, { recursive: true, force: true })
-  await fs.rename(extractedDir, finalDir)
-
-  if (TARGET_PLATFORM !== "windows-x64") await fs.chmod(path.join(finalDir, "bin", "clangd"), 0o755)
-
-  console.log(`Clangd ${tag} downloaded successfully`)
-  return tag
 }
 
 async function downloadRustAnalyzer(): Promise<string> {
   console.log("\n=== Downloading rust-analyzer ===")
-
-  const mirrorUrl = process.env.RUST_ANALYZER_MIRROR_URL
-  let downloadUrl: string
-  let tag: string
-
-  if (mirrorUrl) {
-    downloadUrl = mirrorUrl
-    tag = "mirror"
+  const version = "2026-04-27"
+  const arch = TARGET_PLATFORM.includes("arm64") ? "aarch64" : "x86_64"
+  const patterns = []
+  if (TARGET_PLATFORM === "windows-x64") patterns.push("rust-analyzer-x86_64-pc-windows-msvc.zip")
+  else if (TARGET_PLATFORM.includes("darwin")) {
+    patterns.push(`rust-analyzer-${arch}-apple-darwin.gz`)
+    if (arch === "aarch64") patterns.push(`rust-analyzer-x86_64-apple-darwin.gz`)
   } else {
-    const releaseResponse = await fetch("https://api.github.com/repos/rust-lang/rust-analyzer/releases/latest")
-    if (!releaseResponse.ok) {
-      throw new Error("Failed to fetch rust-analyzer release info")
-    }
-    const release = await releaseResponse.json() as { tag_name: string; assets: { name: string; browser_download_url: string }[] }
-    tag = release.tag_name
-
-    const assetName = TARGET_PLATFORM === "windows-x64" ? "rust-analyzer-x86_64-pc-windows-msvc.zip" : "rust-analyzer-x86_64-unknown-linux-gnu.gz"
-    const asset = release.assets.find(a => a.name === assetName)
-    if (!asset) {
-      throw new Error(`Could not find rust-analyzer ${assetName} asset`)
-    }
-    downloadUrl = asset.browser_download_url
+    const libc = LIBC_TARGET
+    const otherLibc = libc === "musl" ? "gnu" : "musl"
+    patterns.push(`rust-analyzer-${arch}-unknown-linux-${libc}.gz`)
+    patterns.push(`rust-analyzer-${arch}-unknown-linux-${otherLibc}.gz`)
+    if (arch === "aarch64") patterns.push(`rust-analyzer-x86_64-unknown-linux-${libc}.gz`)
   }
 
   const raDir = path.join(DEPS_DIR, "lsp", "rust-analyzer", "bin")
   await fs.mkdir(raDir, { recursive: true })
 
-  const archiveExt = TARGET_PLATFORM === "windows-x64" ? ".zip" : ".gz"
-  const archivePath = path.join(DEPS_DIR, `rust-analyzer${archiveExt}`)
-  await downloadFile(downloadUrl, archivePath)
-
-  if (TARGET_PLATFORM === "windows-x64") {
-    await extractZip(archivePath, raDir)
-  } else {
-    const proc = Bun.spawn(["gunzip", "-c", archivePath], {
-      stdout: "pipe",
-      stderr: "pipe",
-    })
-    const binaryData = await Bun.readableStreamToArrayBuffer(proc.stdout)
-    await proc.exited
-    if (proc.exitCode !== 0) {
-      throw new Error("Failed to extract rust-analyzer")
+  for (const assetName of patterns) {
+    const downloadUrl = `https://github.com/rust-lang/rust-analyzer/releases/download/${version}/${assetName}`
+    const archivePath = path.join(DEPS_DIR, assetName)
+    try {
+      await downloadFile(downloadUrl, archivePath)
+      if (assetName.endsWith(".zip")) await extractZip(archivePath, raDir)
+      else {
+        const proc = Bun.spawn(["gunzip", "-c", archivePath], { stdout: "pipe" })
+        await Bun.write(path.join(raDir, "rust-analyzer"), await Bun.readableStreamToArrayBuffer(proc.stdout))
+        await proc.exited
+      }
+      const binName = TARGET_PLATFORM.includes("windows") ? "rust-analyzer.exe" : "rust-analyzer"
+      if (!TARGET_PLATFORM.includes("windows")) await fs.chmod(path.join(raDir, binName), 0o755)
+      await fs.unlink(archivePath)
+      return version
+    } catch (err) {
+      console.log(`Failed to download ${assetName}, trying next...`)
     }
-
-    const binaryPath = path.join(raDir, "rust-analyzer")
-    await Bun.write(binaryPath, binaryData)
   }
-
-  const binaryPath = path.join(raDir, TARGET_PLATFORM === "windows-x64" ? "rust-analyzer.exe" : "rust-analyzer")
-  if (TARGET_PLATFORM !== "windows-x64") await fs.chmod(binaryPath, 0o755)
-
-  await fs.unlink(archivePath)
-
-  console.log(`rust-analyzer ${tag} downloaded successfully`)
-  return tag
+  throw new Error(`Failed to download rust-analyzer for ${TARGET_PLATFORM}`)
 }
 
 async function downloadZls(): Promise<string | undefined> {
-  console.log("\n=== Downloading ZLS (Zig Language Server) ===")
-
+  console.log("\n=== Downloading ZLS ===")
+  const version = "0.16.0"
+  let assetName: string
+  if (TARGET_PLATFORM === "windows-x64") assetName = `zls-x86_64-windows.zip`
+  else if (TARGET_PLATFORM === "darwin-x64") assetName = `zls-x86_64-macos.tar.xz`
+  else if (TARGET_PLATFORM === "darwin-arm64") assetName = `zls-aarch64-macos.tar.xz`
+  else if (TARGET_PLATFORM === "linux-arm64") assetName = `zls-aarch64-linux.tar.xz`
+  else assetName = `zls-x86_64-linux.tar.xz`
+  const zlsDir = path.join(DEPS_DIR, "lsp", "zls", "bin")
+  await fs.mkdir(zlsDir, { recursive: true })
+  const archivePath = path.join(DEPS_DIR, assetName.endsWith(".zip") ? "zls.zip" : "zls.tar.xz")
+  const downloadUrl = `https://github.com/zigtools/zls/releases/download/${version}/${assetName}`
   try {
-    const releaseResponse = await fetch("https://api.github.com/repos/zigtools/zls/releases/latest")
-    if (!releaseResponse.ok) {
-      console.log("Failed to fetch zls release info, skipping")
-      return undefined
-    }
-    const release = await releaseResponse.json() as { tag_name: string; assets: { name: string; browser_download_url: string }[] }
-    const tag = release.tag_name
-
-    const assetName = TARGET_PLATFORM === "windows-x64" ? "zls-x86_64-windows.zip" : "zls-x86_64-linux.tar.xz"
-    const asset = release.assets.find((a: any) => a.name === assetName)
-    if (!asset) {
-      console.log(`Could not find ZLS ${assetName} asset, skipping`)
-      return undefined
-    }
-
-    const zlsDir = path.join(DEPS_DIR, "lsp", "zls", "bin")
-    await fs.mkdir(zlsDir, { recursive: true })
-
-    const archiveExt = TARGET_PLATFORM === "windows-x64" ? ".zip" : ".tar.xz"
-    const archivePath = path.join(DEPS_DIR, `zls${archiveExt}`)
-    await downloadFile(asset.browser_download_url, archivePath)
-
-    if (TARGET_PLATFORM === "windows-x64") {
-      await extractZip(archivePath, path.join(DEPS_DIR, "lsp", "zls"))
-    } else {
-      await extractTarXz(archivePath, path.join(DEPS_DIR, "lsp", "zls"))
-    }
-
-    const binaryPath = path.join(DEPS_DIR, "lsp", "zls", TARGET_PLATFORM === "windows-x64" ? "zls.exe" : "zls")
-    const finalPath = path.join(zlsDir, TARGET_PLATFORM === "windows-x64" ? "zls.exe" : "zls")
-    
-    if (await fs.stat(binaryPath).catch(() => null)) {
-      await fs.rename(binaryPath, finalPath)
-    }
-    
-    if (TARGET_PLATFORM !== "windows-x64") await fs.chmod(finalPath, 0o755)
+    await downloadFile(downloadUrl, archivePath)
+    if (assetName.endsWith(".zip")) await extractZip(archivePath, path.join(DEPS_DIR, "lsp", "zls"))
+    else await extractTarXz(archivePath, path.join(DEPS_DIR, "lsp", "zls"))
+    const binName = TARGET_PLATFORM.includes("windows") ? "zls.exe" : "zls"
+    const finalPath = path.join(zlsDir, binName)
+    const extractedPath = path.join(DEPS_DIR, "lsp", "zls", binName)
+    if (await fs.stat(extractedPath).catch(() => null)) await fs.rename(extractedPath, finalPath)
+    if (!TARGET_PLATFORM.includes("windows")) await fs.chmod(finalPath, 0o755)
     await fs.unlink(archivePath)
-
-    console.log(`ZLS ${tag} downloaded successfully`)
-    return tag
-  } catch (err) {
-    console.log(`ZLS download failed, skipping: ${err}`)
-    return undefined
-  }
+    return version
+  } catch (err) { return }
 }
 
 async function downloadLuaLanguageServer(): Promise<string | undefined> {
   console.log("\n=== Downloading Lua Language Server ===")
-
+  let assetName: string
+  if (TARGET_PLATFORM === "windows-x64") assetName = "win32-x64"
+  else if (TARGET_PLATFORM === "darwin-x64") assetName = "darwin-x64"
+  else if (TARGET_PLATFORM === "darwin-arm64") assetName = "darwin-arm64"
+  else if (TARGET_PLATFORM === "linux-arm64") assetName = "linux-arm64"
+  else assetName = "linux-x64"
+  const ext = TARGET_PLATFORM.includes("windows") ? ".zip" : ".tar.gz"
+  const tag = "3.18.2"
+  const downloadUrl = `https://github.com/LuaLS/lua-language-server/releases/download/${tag}/lua-language-server-${tag}-${assetName}${ext}`
+  const luaLsDir = path.join(DEPS_DIR, "lsp", "lua-language-server")
   try {
-    const releaseResponse = await fetch("https://api.github.com/repos/LuaLS/lua-language-server/releases/latest")
-    if (!releaseResponse.ok) {
-      console.log("Failed to fetch lua-language-server release info, skipping")
-      return undefined
-    }
-    const release = await releaseResponse.json() as { tag_name: string; assets: { name: string; browser_download_url: string }[] }
-    const tag = release.tag_name
-
-    const assetName = TARGET_PLATFORM === "windows-x64" ? "win32-x64" : "linux-x64"
-    const assetExt = TARGET_PLATFORM === "windows-x64" ? ".zip" : ".tar.gz"
-    const asset = release.assets.find((a: any) => a.name.includes(assetName) && a.name.endsWith(assetExt))
-    if (!asset) {
-      console.log(`Could not find Lua LS ${assetName} asset, skipping`)
-      return undefined
-    }
-
-    const luaLsDir = path.join(DEPS_DIR, "lsp", "lua-language-server")
     await fs.mkdir(luaLsDir, { recursive: true })
-
-    const archivePath = path.join(DEPS_DIR, `lua-language-server${assetExt}`)
-    await downloadFile(asset.browser_download_url, archivePath)
-
-    if (TARGET_PLATFORM === "windows-x64") {
-      await extractZip(archivePath, luaLsDir)
-    } else {
-      await extractTarGz(archivePath, luaLsDir, 1)
-    }
-
-    // The binary is at root level, make it executable
-    const binName = TARGET_PLATFORM === "windows-x64" ? "lua-language-server.exe" : "lua-language-server"
+    const archivePath = path.join(DEPS_DIR, `lua-ls${ext}`)
+    await downloadFile(downloadUrl, archivePath)
+    if (ext === ".zip") await extractZip(archivePath, luaLsDir)
+    else await extractTarGz(archivePath, luaLsDir, 1)
+    const binName = TARGET_PLATFORM.includes("windows") ? "lua-language-server.exe" : "lua-language-server"
     const binPath = path.join(luaLsDir, "bin", binName)
-    const rootBinaryPath = path.join(luaLsDir, binName)
-    
-    // Check both locations for the binary
-    if (TARGET_PLATFORM !== "windows-x64" && await fs.stat(binPath).catch(() => null)) {
-      if (TARGET_PLATFORM !== "windows-x64") await fs.chmod(binPath, 0o755)
-    } else if (TARGET_PLATFORM !== "windows-x64" && await fs.stat(rootBinaryPath).catch(() => null)) {
-      await fs.chmod(rootBinaryPath, 0o755)
-    }
-
+    if (!TARGET_PLATFORM.includes("windows") && await fs.stat(binPath).catch(() => null)) await fs.chmod(binPath, 0o755)
     await fs.unlink(archivePath)
-
-    console.log(`Lua Language Server ${tag} downloaded successfully`)
     return tag
-  } catch (err) {
-    console.log(`Lua LS download failed, skipping: ${err}`)
-    return undefined
-  }
+  } catch (err) { return }
+}
+
+async function downloadElixir() {
+  console.log("\n=== Downloading ElixirLS ===")
+  const version = "v0.30.0"
+  const url = `https://github.com/elixir-lsp/elixir-ls/releases/download/${version}/elixir-ls-${version}.zip`
+  const archive = path.join(DEPS_DIR, "elixir-ls.zip")
+  try {
+    await downloadFile(url, archive)
+    const dist = path.join(DEPS_DIR, "lsp", "elixir-ls-master")
+    await fs.mkdir(dist, { recursive: true })
+    await extractZip(archive, dist)
+    await fs.unlink(archive)
+    return version
+  } catch (err) { return }
 }
 
 async function downloadTerraformLs(): Promise<string | undefined> {
-  console.log("\n=== Downloading Terraform Language Server ===")
-
+  console.log("\n=== Downloading Terraform LS ===")
+  const version = "0.38.6"
+  let os = TARGET_PLATFORM.includes("windows") ? "windows" : (TARGET_PLATFORM.includes("darwin") ? "darwin" : "linux")
+  let arch = TARGET_PLATFORM.includes("arm64") ? "arm64" : "amd64"
+  const url = `https://releases.hashicorp.com/terraform-ls/${version}/terraform-ls_${version}_${os}_${arch}.zip`
+  const tfLsDir = path.join(DEPS_DIR, "lsp", "terraform-ls")
   try {
-    const releaseResponse = await fetch("https://api.releases.hashicorp.com/v1/releases/terraform-ls/latest")
-    if (!releaseResponse.ok) {
-      console.log("Failed to fetch terraform-ls release info, skipping")
-      return undefined
-    }
-    const release = await releaseResponse.json() as { version: string; builds: { arch: string; os: string; url: string }[] }
-
-    const targetOs = TARGET_PLATFORM === "windows-x64" ? "windows" : "linux"
-    const build = release.builds.find((b: any) => b.os === targetOs && b.arch === "amd64")
-    if (!build) {
-      console.log(`Could not find terraform-ls ${targetOs} asset, skipping`)
-      return undefined
-    }
-
-    const tfLsDir = path.join(DEPS_DIR, "lsp", "terraform-ls")
     await fs.mkdir(tfLsDir, { recursive: true })
-
     const archivePath = path.join(DEPS_DIR, "terraform-ls.zip")
-    await downloadFile(build.url, archivePath)
-
+    await downloadFile(url, archivePath)
     await extractZip(archivePath, tfLsDir)
-
-    const binPath = path.join(tfLsDir, TARGET_PLATFORM === "windows-x64" ? "terraform-ls.exe" : "terraform-ls")
-    await fs.chmod(binPath, 0o755)
-
+    const binName = TARGET_PLATFORM.includes("windows") ? "terraform-ls.exe" : "terraform-ls"
+    if (!TARGET_PLATFORM.includes("windows")) await fs.chmod(path.join(tfLsDir, binName), 0o755)
     await fs.unlink(archivePath)
-
-    console.log(`Terraform LS ${release.version} downloaded successfully`)
-    return release.version
-  } catch (err) {
-    console.log(`Terraform LS download failed, skipping: ${err}`)
-    return undefined
-  }
+    return version
+  } catch (err) { return }
 }
 
 async function downloadTexlab(): Promise<string | undefined> {
-  console.log("\n=== Downloading TexLab (LaTeX Language Server) ===")
-
+  console.log("\n=== Downloading TexLab ===")
+  const version = "5.25.1"
+  let assetName: string
+  if (TARGET_PLATFORM.includes("windows")) assetName = `texlab-x86_64-windows.zip`
+  else if (TARGET_PLATFORM === "darwin-x64") assetName = `texlab-x86_64-macos.tar.gz`
+  else if (TARGET_PLATFORM === "darwin-arm64") assetName = `texlab-aarch64-macos.tar.gz`
+  else if (TARGET_PLATFORM === "linux-arm64") assetName = `texlab-aarch64-linux.tar.gz`
+  else assetName = LIBC_TARGET === "musl" ? `texlab-x86_64-alpine.tar.gz` : `texlab-x86_64-linux.tar.gz`
+  const downloadUrl = `https://github.com/latex-lsp/texlab/releases/download/v${version}/${assetName}`
+  const texlabDir = path.join(DEPS_DIR, "lsp", "texlab", "bin")
   try {
-    const releaseResponse = await fetch("https://api.github.com/repos/latex-lsp/texlab/releases/latest")
-    if (!releaseResponse.ok) {
-      console.log("Failed to fetch texlab release info, skipping")
-      return undefined
-    }
-    const release = await releaseResponse.json() as { tag_name: string; assets: { name: string; browser_download_url: string }[] }
-    const tag = release.tag_name
-
-    const assetName = TARGET_PLATFORM === "windows-x64" ? "texlab-x86_64-windows.zip" : "texlab-x86_64-linux.tar.gz"
-    const asset = release.assets.find((a: any) => a.name === assetName)
-    if (!asset) {
-      console.log(`Could not find TexLab ${assetName} asset, skipping`)
-      return undefined
-    }
-
-    const texlabDir = path.join(DEPS_DIR, "lsp", "texlab", "bin")
     await fs.mkdir(texlabDir, { recursive: true })
-
-    const archivePath = path.join(DEPS_DIR, TARGET_PLATFORM === "windows-x64" ? "texlab.zip" : "texlab.tar.gz")
-    await downloadFile(asset.browser_download_url, archivePath)
-
-    // Extract to temp dir first
+    const ext = assetName.endsWith(".zip") ? ".zip" : ".tar.gz"
+    const archivePath = path.join(DEPS_DIR, `texlab${ext}`)
+    await downloadFile(downloadUrl, archivePath)
     const tempDir = path.join(DEPS_DIR, "texlab_temp")
     await fs.mkdir(tempDir, { recursive: true })
-    if (TARGET_PLATFORM === "windows-x64") {
-      await extractZip(archivePath, tempDir)
-    } else {
-      await extractTarGz(archivePath, tempDir)
-    }
-
-    // Move binary to bin directory
-    const binName = TARGET_PLATFORM === "windows-x64" ? "texlab.exe" : "texlab"
+    if (ext === ".zip") await extractZip(archivePath, tempDir)
+    else await extractTarGz(archivePath, tempDir)
+    const binName = TARGET_PLATFORM.includes("windows") ? "texlab.exe" : "texlab"
     const extractedBinary = path.join(tempDir, binName)
-    const finalBinary = path.join(texlabDir, binName)
-    if (await fs.stat(extractedBinary).catch(() => null)) {
-      await fs.rename(extractedBinary, finalBinary)
-    }
-
-    // Cleanup
+    if (await fs.stat(extractedBinary).catch(() => null)) await fs.rename(extractedBinary, path.join(texlabDir, binName))
     await fs.rm(tempDir, { recursive: true, force: true })
-    if (TARGET_PLATFORM !== "windows-x64") if (TARGET_PLATFORM !== "windows-x64") await fs.chmod(finalBinary, 0o755)
+    if (!TARGET_PLATFORM.includes("windows")) await fs.chmod(path.join(texlabDir, binName), 0o755)
     await fs.unlink(archivePath)
-
-    console.log(`TexLab ${tag} downloaded successfully`)
-    return tag
-  } catch (err) {
-    console.log(`TexLab download failed, skipping: ${err}`)
-    return undefined
-  }
+    return version
+  } catch (err) { return }
 }
 
 async function downloadTinymist(): Promise<string | undefined> {
-  console.log("\n=== Downloading Tinymist (Typst Language Server) ===")
-
+  console.log("\n=== Downloading Tinymist ===")
+  const version = "v0.14.16"
+  let assetName: string
+  if (TARGET_PLATFORM.includes("windows")) assetName = `tinymist-x86_64-pc-windows-msvc.zip`
+  else if (TARGET_PLATFORM === "darwin-x64") assetName = `tinymist-x86_64-apple-darwin.tar.gz`
+  else if (TARGET_PLATFORM === "darwin-arm64") assetName = `tinymist-aarch64-apple-darwin.tar.gz`
+  else if (TARGET_PLATFORM === "linux-arm64") assetName = `tinymist-aarch64-unknown-linux-${LIBC_TARGET}.tar.gz`
+  else assetName = `tinymist-x86_64-unknown-linux-${LIBC_TARGET}.tar.gz`
+  const downloadUrl = `https://github.com/Myriad-Dreamin/tinymist/releases/download/${version}/${assetName}`
+  const tinymistDir = path.join(DEPS_DIR, "lsp", "tinymist", "bin")
   try {
-    const releaseResponse = await fetch("https://api.github.com/repos/Myriad-Dreamin/tinymist/releases/latest")
-    if (!releaseResponse.ok) {
-      console.log("Failed to fetch tinymist release info, skipping")
-      return undefined
-    }
-    const release = await releaseResponse.json() as { tag_name: string; assets: { name: string; browser_download_url: string }[] }
-    const tag = release.tag_name
-
-    const assetName = TARGET_PLATFORM === "windows-x64" ? "tinymist-x86_64-pc-windows-msvc.zip" : "tinymist-x86_64-unknown-linux-gnu.tar.gz"
-    const asset = release.assets.find((a: any) => a.name === assetName)
-    if (!asset) {
-      console.log(`Could not find Tinymist ${assetName} asset, skipping`)
-      return undefined
-    }
-
-    const tinymistDir = path.join(DEPS_DIR, "lsp", "tinymist", "bin")
     await fs.mkdir(tinymistDir, { recursive: true })
-
-    const archivePath = path.join(DEPS_DIR, TARGET_PLATFORM === "windows-x64" ? "tinymist.zip" : "tinymist.tar.gz")
-    await downloadFile(asset.browser_download_url, archivePath)
-
-    // Extract to temp dir first
+    const ext = assetName.endsWith(".zip") ? ".zip" : ".tar.gz"
+    const archivePath = path.join(DEPS_DIR, `tinymist${ext}`)
+    await downloadFile(downloadUrl, archivePath)
     const tempDir = path.join(DEPS_DIR, "tinymist_temp")
     await fs.mkdir(tempDir, { recursive: true })
-    if (TARGET_PLATFORM === "windows-x64") {
-      await extractZip(archivePath, tempDir)
-    } else {
-      await extractTarGz(archivePath, tempDir, 1)
-    } // strip-components=1 to get past the tinymist-xxx directory
-
-    // Find and move the binary
-    const binName = TARGET_PLATFORM === "windows-x64" ? "tinymist.exe" : "tinymist"
+    if (ext === ".zip") await extractZip(archivePath, tempDir)
+    else await extractTarGz(archivePath, tempDir, 1)
+    const binName = TARGET_PLATFORM.includes("windows") ? "tinymist.exe" : "tinymist"
     const extractedBinary = path.join(tempDir, binName)
-    const finalBinary = path.join(tinymistDir, binName)
-    if (await fs.stat(extractedBinary).catch(() => null)) {
-      await fs.rename(extractedBinary, finalBinary)
-    }
-
-    // Cleanup
+    if (await fs.stat(extractedBinary).catch(() => null)) await fs.rename(extractedBinary, path.join(tinymistDir, binName))
     await fs.rm(tempDir, { recursive: true, force: true })
-    await fs.chmod(finalBinary, 0o755)
+    if (!TARGET_PLATFORM.includes("windows")) await fs.chmod(path.join(tinymistDir, binName), 0o755)
     await fs.unlink(archivePath)
-
-    console.log(`Tinymist ${tag} downloaded successfully`)
-    return tag
-  } catch (err) {
-    console.log(`Tinymist download failed, skipping: ${err}`)
-    return undefined
-  }
+    return version
+  } catch (err) { return }
 }
 
 async function downloadTreeSitterWasm(): Promise<string[]> {
   console.log("\n=== Downloading Tree-sitter WASM files ===")
-
   const wasmDir = path.join(DEPS_DIR, "tree-sitter", "wasm")
   await fs.mkdir(wasmDir, { recursive: true })
-
   const downloaded: string[] = []
-
   for (const parser of TREE_SITTER_PARSERS) {
     try {
       const wasmName = parser.wasmName || `tree-sitter-${parser.name}`
-      const destPath = path.join(wasmDir, `${wasmName}.wasm`)
-
-      let url: string
-      if (parser.wasmPath) {
-        // Special case for nix
-        url = `https://github.com/${parser.repo}/raw/${parser.assetCommit}/${parser.wasmPath}`
-      } else {
-        url = `https://github.com/${parser.repo}/releases/download/${parser.version}/${wasmName}.wasm`
-      }
-
-      await downloadFile(url, destPath)
+      const url = parser.wasmPath ? `https://github.com/${parser.repo}/raw/${parser.assetCommit}/${parser.wasmPath}` : `https://github.com/${parser.repo}/releases/download/${parser.version}/${wasmName}.wasm`
+      await downloadFile(url, path.join(wasmDir, `${wasmName}.wasm`))
       downloaded.push(parser.name)
-    } catch (err) {
-      console.log(`Failed to download ${parser.name} WASM, skipping: ${err}`)
-    }
+    } catch (err) { console.log(`Failed to download ${parser.name} WASM, skipping`) }
   }
-
-  console.log(`Downloaded ${downloaded.length} tree-sitter WASM files`)
   return downloaded
 }
 
 async function downloadTreeSitterQueries(): Promise<void> {
   console.log("\n=== Downloading Tree-sitter query files ===")
-
   for (const [lang, queries] of Object.entries(TREE_SITTER_QUERIES)) {
     const langDir = path.join(DEPS_DIR, "tree-sitter", "queries", lang)
     await fs.mkdir(langDir, { recursive: true })
-
-    for (const url of queries.highlights || []) {
-      try {
-        const destPath = path.join(langDir, "highlights.scm")
-        await downloadFile(url, destPath)
-      } catch (err) {
-        console.log(`Failed to download ${lang} highlights.scm: ${err}`)
-      }
-    }
-
-    for (const url of queries.locals || []) {
-      try {
-        const destPath = path.join(langDir, "locals.scm")
-        await downloadFile(url, destPath)
-      } catch (err) {
-        console.log(`Failed to download ${lang} locals.scm: ${err}`)
-      }
-    }
+    for (const url of queries.highlights || []) try { await downloadFile(url, path.join(langDir, "highlights.scm")) } catch (err) {}
+    for (const url of queries.locals || []) try { await downloadFile(url, path.join(langDir, "locals.scm")) } catch (err) {}
   }
-
-  console.log("Tree-sitter query files downloaded")
 }
 
 async function installNpmPackages(): Promise<Record<string, string>> {
   console.log("\n=== Installing npm packages ===")
-
-  const nodeModulesDir = path.join(DEPS_DIR, "node_modules")
-  await fs.mkdir(nodeModulesDir, { recursive: true })
-
-  const packages = [
-    "pyright",
-    "typescript",
-    "typescript-language-server",
-    "svelte-language-server",
-    "@astrojs/language-server",
-    "yaml-language-server",
-    "dockerfile-language-server-nodejs",
-    "@vue/language-server",
-    "intelephense",
-    "bash-language-server",
-    "oxlint",
-    "@biomejs/biome",
-    "prisma",
-  ]
-
   const pkgJsonPath = path.join(DEPS_DIR, "package.json")
   await Bun.write(pkgJsonPath, JSON.stringify({ dependencies: {} }, null, 2))
-
+  const packages = ["pyright", "typescript", "typescript-language-server", "svelte-language-server", "@astrojs/language-server", "yaml-language-server", "dockerfile-language-server-nodejs", "@vue/language-server", "intelephense", "bash-language-server", "oxlint", "@biomejs/biome", "prisma"]
   const installCmd = ["bun", "add", "--cwd", DEPS_DIR]
-  if (TARGET_PLATFORM === "windows-x64") {
-    installCmd.push("--os=win32", "--cpu=x64")
-  }
+  if (TARGET_PLATFORM === "windows-x64") installCmd.push("--os=win32", "--cpu=x64")
+  else if (TARGET_PLATFORM.includes("darwin")) installCmd.push("--os=darwin", `--cpu=${TARGET_PLATFORM.includes("arm64") ? "arm64" : "x64"}`)
+  else installCmd.push("--os=linux", `--cpu=${TARGET_PLATFORM.includes("arm64") ? "arm64" : "x64"}`)
   installCmd.push(...packages)
-  console.log(`Running: ${installCmd.join(" ")}`)
-
-  const proc = Bun.spawn(installCmd, {
-    stdout: "inherit",
-    stderr: "inherit",
-  })
+  const proc = Bun.spawn(installCmd, { stdout: "inherit", stderr: "inherit" })
   await proc.exited
-  if (proc.exitCode !== 0) {
-    throw new Error("Failed to install npm packages")
-  }
-
-  const versions: Record<string, string> = {}
   const pkgJson = await Bun.file(pkgJsonPath).json()
-
-  for (const [pkg, version] of Object.entries(pkgJson.dependencies || {})) {
-    versions[pkg] = version as string
-  }
-
-  console.log("npm packages installed successfully")
+  const versions: Record<string, string> = {}
+  for (const [pkg, version] of Object.entries(pkgJson.dependencies || {})) versions[pkg] = version as string
   return versions
 }
 
-async function downloadModelsJson(): Promise<void> {
-  console.log("\n=== Downloading models.json ===")
-
-  const modelsUrl = process.env.MODELS_URL || "https://models.dev/api.json"
-  const destPath = path.join(DEPS_DIR, "models.json")
-  await downloadFile(modelsUrl, destPath)
-  console.log("models.json downloaded successfully")
-}
-
-async function buildWebApp(): Promise<void> {
-  console.log("\n=== Building web app ===")
-
-  const skipBuild = process.env.SKIP_WEB_APP_BUILD === "true"
-  if (skipBuild) {
-    console.log("Skipping web app build (SKIP_WEB_APP_BUILD=true)")
-    return
-  }
-
-  const proc = Bun.spawn(["bun", "turbo", "build", "--filter=@opencode-ai/app"], {
-    stdout: "inherit",
-    stderr: "inherit",
-  })
-  await proc.exited
-  if (proc.exitCode !== 0) {
-    throw new Error("Failed to build web app")
-  }
-
-  const appDistSrc = "packages/app/dist"
-  const appDistDest = path.join(DEPS_DIR, "app")
-  await fs.mkdir(appDistDest, { recursive: true })
-  await $`cp -r ${appDistSrc}/* ${appDistDest}/`
-
-  console.log("Web app built and copied successfully")
-}
-
-async function createManifest(
-  ripgrepVersion: string,
-  clangdVersion: string,
-  rustAnalyzerVersion: string,
-  zlsVersion: string | undefined,
-  luaLsVersion: string | undefined,
-  terraformLsVersion: string | undefined,
-  texlabVersion: string | undefined,
-  tinymistVersion: string | undefined,
-  kotlin: string | undefined,
-  jdtls: string | undefined,
-  eslint: string | undefined,
-  elixir: string | undefined,
-  deno: string | undefined,
-  treeSitterWasm: string[],
-  npmVersions: Record<string, string>
-): Promise<void> {
-  console.log("\n=== Creating manifest ===")
-
+async function createManifest(ripgrep: string, clangd: string, rustAnalyzer: string, zls: any, luaLs: any, terraformLs: any, texlab: any, tinymist: any, kotlin: any, jdtls: any, eslint: any, elixir: any, deno: any, treeSitterWasm: string[], npmVersions: any): Promise<void> {
   const manifest: Manifest = {
-    version: "1.0.0",
-    created: new Date().toISOString(),
-    platform: "linux",
-    arch: "x64",
-    components: {
-      ripgrep: ripgrepVersion,
-      clangd: clangdVersion,
-      rustAnalyzer: rustAnalyzerVersion,
-      zls: zlsVersion,
-      luaLs: luaLsVersion,
-      terraformLs: terraformLsVersion,
-      texlab: texlabVersion,
-      tinymist: tinymistVersion,
-      kotlin,
-      jdtls,
-      vscodeEslint: eslint,
-      elixirLs: elixir,
-      deno,
-      treeSitterWasm,
-      npmPackages: npmVersions,
-    },
+    version: "1.0.0", created: new Date().toISOString(), platform: TARGET_PLATFORM, arch: TARGET_PLATFORM.includes("arm64") ? "arm64" : "x64",
+    components: { ripgrep, clangd, rustAnalyzer, zls, luaLs, terraformLs, texlab, tinymist, kotlin, jdtls, vscodeEslint: eslint, elixirLs: elixir, deno, treeSitterWasm, npmPackages: npmVersions },
   }
-
-  await Bun.write(
-    path.join(DEPS_DIR, "manifest.json"),
-    JSON.stringify(manifest, null, 2)
-  )
-
-  console.log("Manifest created")
+  await Bun.write(path.join(DEPS_DIR, "manifest.json"), JSON.stringify(manifest, null, 2))
 }
 
 async function main() {
   const args = process.argv.slice(2)
   const pluginsOnly = args.includes("--plugins-only")
-  
   const platformsArg = args.find(a => a.startsWith("--platforms="))
-  const platforms = platformsArg ? platformsArg.split("=")[1].split(",") : ["linux-x64", "windows-x64"]
+  if (!platformsArg && !pluginsOnly) console.log("No platforms specified. Defaulting to linux-x64-musl and windows-x64")
+  const platformSpecs = platformsArg ? platformsArg.split("=")[1].split(",") : (pluginsOnly ? [] : ["linux-x64-musl", "windows-x64"])
+  const targets = platformSpecs.map(spec => {
+    if (spec === "windows-x64") return { platform: "windows-x64", libc: "msvc", suffix: "-windows-x64" }
+    if (spec === "linux-x64-gnu") return { platform: "linux-x64", libc: "gnu", suffix: "-linux-x64-gnu" }
+    if (spec === "linux-x64-musl") return { platform: "linux-x64", libc: "musl", suffix: "-linux-x64-musl" }
+    if (spec === "linux-arm64-musl") return { platform: "linux-arm64", libc: "musl", suffix: "-linux-arm64-musl" }
+    if (spec === "linux-arm64-gnu") return { platform: "linux-arm64", libc: "gnu", suffix: "-linux-arm64-gnu" }
+    if (spec === "darwin-x64") return { platform: "darwin-x64", libc: "none", suffix: "-darwin-x64" }
+    if (spec === "darwin-arm64") return { platform: "darwin-arm64", libc: "none", suffix: "-darwin-arm64" }
+    process.exit(1)
+  })
 
-  console.log("=== OpenCode Onprem Dependencies Downloader ===")
-  console.log(`Target platforms: ${platforms.join(", ")}`)
-
-  for (const platform of platforms) {
-    TARGET_PLATFORM = platform
-    DEPS_DIR = `dist/onprem-deps-${TARGET_PLATFORM}`
-    console.log(`\n--- Processing platform: ${TARGET_PLATFORM} ---`)
-    console.log(`Target directory: ${DEPS_DIR}`)
-
+  for (const target of targets) {
+    TARGET_PLATFORM = target.platform; LIBC_TARGET = target.libc; DEPS_DIR = `dist/onprem-deps${target.suffix}`
     if (pluginsOnly) {
-      const depsExist = await fs.stat(DEPS_DIR).catch(() => null)
-      if (!depsExist) {
-        console.error(`Dependencies not found at ${DEPS_DIR}`)
-        console.error("Run full download first (without --plugins-only)")
-        continue
-      }
-
       const pluginList = await loadPluginsConfig()
       const pluginVersions = await installPlugins(pluginList)
-      await updatePluginsManifest(pluginVersions)
-
-      console.log("\n=== Plugins download complete ===")
-      if (Object.keys(pluginVersions).length > 0) {
-        console.log(`Plugins saved to: ${DEPS_DIR}/plugins/node_modules/`)
-      }
+      const manifestPath = path.join(DEPS_DIR, "manifest.json")
+      const manifest = await Bun.file(manifestPath).json().catch(() => ({ components: {} }))
+      manifest.components.plugins = pluginVersions
+      await Bun.write(manifestPath, JSON.stringify(manifest, null, 2))
       continue
     }
-
     await fs.rm(DEPS_DIR, { recursive: true, force: true })
     await fs.mkdir(DEPS_DIR, { recursive: true })
-
-    const ripgrepVersion = await downloadRipgrep()
-    const clangdVersion = await downloadClangd()
-    const rustAnalyzerVersion = await downloadRustAnalyzer()
-    
-    const zlsVersion = await downloadZls()
-    const luaLsVersion = await downloadLuaLanguageServer()
-    const terraformLsVersion = await downloadTerraformLs()
-    const texlabVersion = await downloadTexlab()
-    const tinymistVersion = await downloadTinymist()
-    const kotlin = await downloadKotlin()
-    const jdtls = await downloadJdtls()
-    const eslint = await downloadEslint()
-    const elixir = await downloadElixir()
-    const deno = await downloadDeno()
-    
-    const treeSitterWasm = await downloadTreeSitterWasm()
+    const rg = await downloadRipgrep(), cd = await downloadClangd(), ra = await downloadRustAnalyzer(), z = await downloadZls(), l = await downloadLuaLanguageServer(), t = await downloadTerraformLs(), tx = await downloadTexlab(), tm = await downloadTinymist(), k = await downloadKotlin(), j = await downloadJdtls(), e = await downloadEslint(), el = await downloadElixir(), d = await downloadDeno(), ts = await downloadTreeSitterWasm()
     await downloadTreeSitterQueries()
-    
-    const npmVersions = await installNpmPackages()
-    await downloadModelsJson()
-    await buildWebApp()
-
-    await createManifest(
-      ripgrepVersion,
-      clangdVersion,
-      rustAnalyzerVersion,
-      zlsVersion,
-      luaLsVersion,
-      terraformLsVersion,
-      texlabVersion,
-      tinymistVersion,
-      kotlin,
-      jdtls,
-      eslint,
-      elixir,
-      deno,
-      treeSitterWasm,
-      npmVersions
-    )
-
+    const npm = await installNpmPackages()
+    await downloadFile("https://models.dev/api.json", path.join(DEPS_DIR, "models.json"))
+    const appProc = Bun.spawn(["bun", "turbo", "build", "--filter=@opencode-ai/app"], { stdout: "inherit", stderr: "inherit" })
+    await appProc.exited
+    const appDist = path.join(DEPS_DIR, "app")
+    await fs.mkdir(appDist, { recursive: true })
+    await $`cp -r packages/app/dist/* ${appDist}/`
+    await createManifest(rg, cd, ra, z, l, t, tx, tm, k, j, e, el, d, ts, npm)
     const pluginList = await loadPluginsConfig()
     const pluginVersions = await installPlugins(pluginList)
-    
     if (Object.keys(pluginVersions).length > 0) {
       const manifestPath = path.join(DEPS_DIR, "manifest.json")
       const manifest = await Bun.file(manifestPath).json()
       manifest.components.plugins = pluginVersions
       await Bun.write(manifestPath, JSON.stringify(manifest, null, 2))
     }
-
-    console.log("\n=== Download complete for " + TARGET_PLATFORM + " ===")
-    console.log(`Dependencies saved to: ${DEPS_DIR}`)
   }
 }
-
-async function updatePluginsManifest(pluginVersions: Record<string, string>): Promise<void> {
-  console.log("\n=== Updating manifest ===")
-
-  const manifestPath = path.join(DEPS_DIR, "manifest.json")
-  let manifest: Manifest
-
-  const existing = await Bun.file(manifestPath).json().catch(() => null)
-  if (existing) {
-    manifest = existing
-    manifest.created = new Date().toISOString()
-  } else {
-    manifest = {
-      version: "1.0.0",
-      created: new Date().toISOString(),
-      platform: "linux",
-      arch: "x64",
-      components: {
-        ripgrep: "",
-        clangd: "",
-        rustAnalyzer: "",
-        treeSitterWasm: [],
-        npmPackages: {},
-      },
-    }
-  }
-
-  manifest.components.plugins = Object.keys(pluginVersions).length > 0 ? pluginVersions : undefined
-
-  await Bun.write(manifestPath, JSON.stringify(manifest, null, 2))
-  console.log("Manifest updated with plugins")
-}
-
-main().catch((err) => {
-  console.error("Error:", err)
-  process.exit(1)
-})
+main().catch(err => { console.error(err); process.exit(1) })

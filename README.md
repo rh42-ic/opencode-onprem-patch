@@ -65,15 +65,19 @@ git apply /path/to/opencode-onprem-patch/patches/plugins-onprem.patch
 cd opencode-new
 bun install
 bun run script/download-onprem-deps.ts
+# 如需构建其它平台 (gnu, macOS, Windows, arm64 等)，请使用：
+# bun run script/download-onprem-deps.ts --platforms=linux-x64-musl,linux-x64-gnu,windows-x64,darwin-x64,darwin-arm64,linux-arm64-musl,linux-arm64-gnu
 ```
 
 ### 3. 打包
 
 ```bash
 OPENCODE_VERSION=1.14.31 bun run script/package-onprem-bundle.ts
+# 支持同时打包 musl 默认版和 gnu 版：
+# OPENCODE_VERSION=1.14.31 bun run script/package-onprem-bundle.ts --platforms=linux-x64-musl,linux-x64-gnu,windows-x64
 ```
 
-> **注意：** `OPENCODE_VERSION` 环境变量用于设置编译后的版本号。
+> **注意：** `OPENCODE_VERSION` 环境变量用于设置编译后的版本号。Linux 环境推荐使用 `--musl`（linux-x64-musl） 编译，以提供更好的旧系统（如 CentOS 7）兼容性。
 
 ## Patch 文件说明
 

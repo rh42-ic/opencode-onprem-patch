@@ -20,7 +20,11 @@ opencode-onprem-patch/
 ├── WORKFLOW.md             # Detailed build guide
 ├── README.md               # This file
 ├── patches/
-│   └── onprem-1.14.31.patch                      # 1.14.31 Consolidated patch
+│   ├── 0001-add-onprem-module-and-scripts.patch  # New files
+│   ├── 0002-modify-source-files.patch            # Source modifications (core)
+│   ├── lsp-server-onprem.patch                   # LSP offline support
+│   ├── parsers-config-onprem.patch                # Tree-sitter offline support
+│   └── plugins-onprem.patch                      # Plugin offline support
 ├── src/
 │   ├── onprem-index.ts         # Onprem module source
 │   ├── onprem-plugins.json      # Plugin config template
@@ -57,6 +61,8 @@ Run this in a networked environment:
 cd opencode-new
 bun install
 bun run script/download-onprem-deps.ts
+# To build other platforms (gnu, macOS, Windows, ARM64), use:
+# bun run script/download-onprem-deps.ts --platforms=linux-x64-musl,linux-x64-gnu,windows-x64,darwin-x64,darwin-arm64,linux-arm64-musl,linux-arm64-gnu
 ```
 
 Optional environment variables:
@@ -73,16 +79,20 @@ bun run script/download-onprem-deps.ts --plugins-only
 
 ```bash
 OPENCODE_VERSION=1.14.31 bun run script/package-onprem-bundle.ts
+# To package multiple platforms, use comma-separated list:
+# OPENCODE_VERSION=1.14.31 bun run script/package-onprem-bundle.ts --platforms=linux-x64-musl,linux-x64-gnu,windows-x64,darwin-x64,darwin-arm64,linux-arm64-musl,linux-arm64-gnu
 ```
 
-> **Note:** By default, dependencies for all platforms are bundled together. You can use the `--platforms=windows-x64` parameter to restrict the target platform for packaging.
+> **Note:** linux-x64-musl and windows-x64 are built by default if no flags are passed.
 
-> **Note:** The `OPENCODE_VERSION` environment variable sets the compiled version number.
+> **Note:** The `OPENCODE_VERSION` environment variable sets the compiled version number. `musl` (`--platforms=linux-x64-musl`) is recommended for Linux builds to ensure maximum compatibility with older enterprise distributions (like CentOS 7).
 
-After packaging, the following platform-specific archive versions will be generated:
-- `opencode-onprem-linux-x64.tar.zst` - Linux standard version (requires AVX2 support)
-- `opencode-onprem-linux-x64-baseline.tar.zst` - Linux compatible version (no AVX2 required, for older CPUs)
+After packaging, the following platform-specific archive versions will be generated depending on your flags:
+- `opencode-onprem-linux-x64-musl.tar.zst` - Linux standard version (musl, requires AVX2 support)
+- `opencode-onprem-linux-x64-musl-baseline.tar.zst` - Linux compatible version (musl, no AVX2 required)
+- `opencode-onprem-linux-x64-gnu.tar.zst` - Linux glibc version (if `linux-x64-gnu` is used)
 - `opencode-onprem-windows-x64.7z` - Windows standard version (requires AVX2 support)
+- macOS / arm64 targets will produce corresponding `.tar.zst` archives.
 - `opencode-onprem-windows-x64-baseline.7z` - Windows compatible version (no AVX2 required, for older CPUs)
 
 ### 4. Deploy to Offline Environment
@@ -106,19 +116,34 @@ opencode-onprem.bat
 
 ## Patch File Descriptions
 
-### onprem-1.14.31.patch
+### 0001-add-onprem-module-and-scripts.patch
 
-Consolidated patch for version 1.14.31, including:
+New files:
 - `packages/opencode/src/onprem/index.ts` - Core onprem module
 - `script/download-onprem-deps.ts` - Pre-download script
 - `script/package-onprem-bundle.ts` - Packaging script
-- `packages/opencode/src/flag/flag.ts` - Environment variable support
+- `script/onprem-plugins.json` - Plugin config file
+- `script/onprem-plugins.schema.json` - JSON Schema
+
+### 0002-modify-source-files.patch
+
+Modified files:
+- `packages/core/src/flag/flag.ts` - Add environment variables
 - `packages/opencode/src/file/ripgrep.ts` - Offline ripgrep
 - `packages/opencode/src/provider/models.ts` - Offline models.json
 - `packages/opencode/src/server/routes/ui.ts` - Web UI static serving
-- `packages/opencode/src/lsp/server.ts` - 20+ LSP offline support
-- `packages/opencode/parsers-config.ts` - Tree-sitter offline loading
-- `packages/opencode/src/plugin/shared.ts` - Plugin offline loading
+
+### lsp-server-onprem.patch
+
+LSP server offline support for 20+ languages.
+
+### parsers-config-onprem.patch
+
+Tree-sitter WASM and query files offline loading.
+
+### plugins-onprem.patch
+
+Offline plugin detection.
 
 ## Supported Offline Components
 

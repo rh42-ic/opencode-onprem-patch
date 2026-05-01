@@ -8,7 +8,7 @@ This document describes how to apply modifications to a new opencode version and
 
 ## Applying Modifications with Git Patch (Recommended)
 
-### Quick Apply (for 1.14.31)
+### Quick Apply
 
 ```bash
 # 1. Download new version source
@@ -18,8 +18,12 @@ cd opencode-new
 # 2. Initialize git (if not already a git repo)
 git init && git add -A && git commit -m "init"
 
-# 3. Apply patch
-git apply /path/to/opencode-onprem-patch/patches/onprem-1.14.31.patch
+# 3. Apply patches
+git apply /path/to/opencode-onprem-patch/patches/0001-add-onprem-module-and-scripts.patch
+git apply /path/to/opencode-onprem-patch/patches/0002-modify-source-files.patch
+git apply /path/to/opencode-onprem-patch/patches/lsp-server-onprem.patch
+git apply /path/to/opencode-onprem-patch/patches/parsers-config-onprem.patch
+git apply /path/to/opencode-onprem-patch/patches/plugins-onprem.patch
 
 # 4. If conflicts occur
 # Check .rej files and merge manually
@@ -34,9 +38,25 @@ git apply /path/to/opencode-onprem-patch/patches/onprem-1.14.31.patch
 
 ## Patch File Descriptions
 
-### onprem-1.14.31.patch
+### 0001-add-onprem-module-and-scripts.patch
 
-Consolidated patch for version 1.14.31, covering new functional modules, source modifications, and LSP/Tree-sitter offline support.
+New files, including core onprem module, pre-download and packaging scripts.
+
+### 0002-modify-source-files.patch
+
+Core source modifications, including environment variables, ripgrep, model loading, and Web UI serving.
+
+### lsp-server-onprem.patch
+
+Offline support for LSP servers.
+
+### parsers-config-onprem.patch
+
+Offline loading for Tree-sitter WASM and query files.
+
+### plugins-onprem.patch
+
+Offline plugin detection.
 
 ## Search Markers
 
@@ -120,13 +140,19 @@ Edit `script/onprem-plugins.json`.
 cd opencode
 bun install
 bun run script/download-onprem-deps.ts
+# To download dependencies for other target OSs/architectures (e.g. gnu, windows, macOS, arm64), use:
+# bun run script/download-onprem-deps.ts --platforms=linux-x64-musl,linux-x64-gnu,windows-x64,darwin-x64,darwin-arm64,linux-arm64-musl,linux-arm64-gnu
 ```
 
 ### 3. Package Offline Bundle
 
 ```bash
 OPENCODE_VERSION=1.14.31 bun run script/package-onprem-bundle.ts
+# To package multiple architecture combinations at once, supply them via comma-separated list:
+# OPENCODE_VERSION=1.14.31 bun run script/package-onprem-bundle.ts --platforms=linux-x64-musl,linux-x64-gnu,windows-x64,darwin-x64,darwin-arm64,linux-arm64-musl,linux-arm64-gnu
 ```
+
+It is highly recommended to output a statically compiled Linux offline package via `musl` (`--platforms=linux-x64-musl`).
 
 ### 4. Deploy on an Offline Machine
 
@@ -136,13 +162,7 @@ cd opencode-onprem-linux-x64
 ./opencode-onprem
 ```
 
-## Regenerating Patches After Version Upgrade
+## Regenerating Patches after Version Upgrade
 
-```bash
-# In the modified repository
-git add -A
-git commit -m "onprem modifications for version x.x.x"
+It is recommended to use `git format-patch` to regenerate the individual patches after verifying modifications on a new version.
 
-# Generate consolidated patch
-git format-patch -1 --stdout > onprem-x.x.x.patch
-```

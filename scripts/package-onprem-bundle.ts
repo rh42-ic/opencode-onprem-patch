@@ -42,17 +42,24 @@ async function buildAll(): Promise<void> {
   console.log("Build complete")
 }
 
-async function findBuildDir(platform: string, variant: BuildVariant): Promise<string> {
+async function findBuildDir(platform: string, variant: BuildVariant, libc: string): Promise<string> {
   const distDir = "packages/opencode/dist"
   const entries = await fs.readdir(distDir)
-  const baseName = platform === "windows-x64" ? "windows-x64" : "linux-x64"
-  const targetName = variant === "baseline" ? `${baseName}-baseline` : baseName
-  const matchDir = entries.find(e => 
-    e.includes(targetName) && !e.includes("musl")
-  )
+  
+  const targetName = variant === "baseline" ? `${platform}-baseline` : platform
+  const isMusl = libc === "musl" && platform !== "windows-x64" && !platform.includes("darwin")
+  
+  const matchDir = entries.find(e => {
+    if (!e.includes(targetName)) return false
+    const hasBaseline = e.includes("baseline")
+    if ((variant === "baseline") !== hasBaseline) return false
+    const hasMusl = e.includes("musl")
+    if (isMusl !== hasMusl) return false
+    return true
+  })
 
   if (!matchDir) {
-    throw new Error(`Could not find ${targetName} build output. Available: ${entries.join(", ")}`)
+    throw new Error(`Could not find ${variant} ${libc} build output for ${platform}. Available: ${entries.join(", ")}`)
   }
 
   return path.join(distDir, matchDir)
@@ -70,18 +77,30 @@ async function createBundle(buildDir: string, platform: string, variant: BuildVa
   await fs.mkdir(path.join(bundlePath, "deps"), { recursive: true })
 
   console.log("Copying opencode binary...")
-  const binName = platform === "windows-x64" ? "opencode.exe" : "opencode"
+  const isWindows = platform === "windows-x64"
+  const binName = isWindows ? "opencode.exe" : "opencode"
   const binaryPath = path.join(buildDir, "bin", binName)
   await fs.copyFile(binaryPath, path.join(bundlePath, "bin", binName))
-  if (platform !== "windows-x64") await fs.chmod(path.join(bundlePath, "bin", binName), 0o755)
+  if (!isWindows) await fs.chmod(path.join(bundlePath, "bin", binName), 0o755)
 
   console.log("Copying dependencies...")
   await $`cp -rL ${DEPS_DIR}/* ${path.join(bundlePath, "deps")}/`
 
   console.log("Copying OpenTUI native library...")
-  const globPattern = platform === "windows-x64"
-    ? "node_modules/.bun/@opentui+core-win32-x64@*/node_modules/@opentui/core-win32-x64/opentui.dll"
-    : "node_modules/.bun/@opentui+core-linux-x64@*/node_modules/@opentui/core-linux-x64/libopentui.so"
+  let globPattern: string
+  if (isWindows) {
+    globPattern = "node_modules/.bun/@opentui+core-win32-x64@*/node_modules/@opentui/core-win32-x64/opentui.dll"
+  } else if (platform === "darwin-arm64") {
+    globPattern = "node_modules/.bun/@opentui+core-darwin-arm64@*/node_modules/@opentui/core-darwin-arm64/libopentui.dylib"
+  } else if (platform === "darwin-x64") {
+    globPattern = "node_modules/.bun/@opentui+core-darwin-x64@*/node_modules/@opentui/core-darwin-x64/libopentui.dylib"
+  } else if (platform === "linux-arm64") {
+    // Note: opentui might not have linux-arm64-musl explicitly, we try standard linux-arm64
+    globPattern = "node_modules/.bun/@opentui+core-linux-arm64@*/node_modules/@opentui/core-linux-arm64/libopentui.so"
+  } else {
+    globPattern = "node_modules/.bun/@opentui+core-linux-x64@*/node_modules/@opentui/core-linux-x64/libopentui.so"
+  }
+  
   const opentuiGlob = new Bun.Glob(globPattern)
   const opentuiMatches = Array.from(opentuiGlob.scanSync({ dot: true }))
   if (opentuiMatches.length === 0) {
@@ -90,7 +109,12 @@ async function createBundle(buildDir: string, platform: string, variant: BuildVa
   const opentuiSoPath = opentuiMatches[0]
   console.log(`Found OpenTUI at: ${opentuiSoPath}`)
   await fs.mkdir(path.join(bundlePath, "deps", "opentui"), { recursive: true })
-  const soName = platform === "windows-x64" ? "opentui.dll" : "libopentui.so"
+  
+  let soName: string
+  if (isWindows) soName = "opentui.dll"
+  else if (platform.includes("darwin")) soName = "libopentui.dylib"
+  else soName = "libopentui.so"
+  
   await fs.copyFile(opentuiSoPath, path.join(bundlePath, "deps", "opentui", soName))
 
   console.log("Creating manifest...")
@@ -172,7 +196,7 @@ export OPENCODE_DISABLE_MODELS_FETCH=true
   await Bun.write(path.join(BUNDLE_DIR, "opencode-onprem.env"), envContent)
 }
 
-async function createReadme(platform: string, variant: BuildVariant): Promise<void> {
+async function createReadme(platform: string, variant: BuildVariant, libc: string): Promise<void> {
   const suffix = variant === "baseline" ? "-baseline" : ""
   const BUNDLE_DIR = path.join("dist", `${BUNDLE_BASE_NAME}${suffix}`)
 
@@ -181,11 +205,15 @@ async function createReadme(platform: string, variant: BuildVariant): Promise<vo
   const variantNote = variant === "baseline" 
     ? "\nThis is the **baseline** version for CPUs without AVX2 support.\n"
     : ""
+  
+  const libcNote = (!platform.includes("windows") && !platform.includes("darwin") && libc === "gnu")
+    ? "\nThis bundle is built against **glibc (gnu)**.\n"
+    : ((!platform.includes("windows") && !platform.includes("darwin")) ? "\nThis bundle is built statically against **musl libc** for maximum compatibility across Linux distributions (including older ones like CentOS 7).\n" : "")
 
 const readme = `# OpenCode Onprem Bundle
 
 This is a self-contained onprem bundle of OpenCode for ${platform}.
-${variantNote}
+${variantNote}${libcNote}
 ## Contents
 
 - \`bin/opencode\` - Main OpenCode binary
@@ -350,7 +378,7 @@ async function createTarball(platform: string, variant: BuildVariant): Promise<v
   const suffix = variant === "baseline" ? "-baseline" : ""
   const BUNDLE_DIR = `${BUNDLE_BASE_NAME}${suffix}`
   
-  const isWindows = platform === "windows-x64"
+  const isWindows = platform.includes("windows")
   const ext = isWindows ? ".7z" : ".tar.zst"
   const TARBALL_NAME = `${BUNDLE_DIR}${ext}`
 
@@ -424,20 +452,39 @@ async function main() {
   const args = process.argv.slice(2)
   const platformsArg = args.find(a => a.startsWith("--platforms="))
   const includeBaseline = args.includes("--baseline")
-  const platforms = platformsArg ? platformsArg.split("=")[1].split(",") : ["linux-x64", "windows-x64"]
 
   console.log("=== OpenCode Onprem Bundle Packager ===")
-  console.log(`Target platforms: ${platforms.join(", ")}`)
+  
+  if (!platformsArg) {
+    console.log("No platforms specified. Defaulting to linux-x64-musl and windows-x64")
+  }
+
+  const platformSpecs = platformsArg ? platformsArg.split("=")[1].split(",") : ["linux-x64-musl", "windows-x64"]
+  
+  const targets = platformSpecs.map(spec => {
+    if (spec === "windows-x64") return { spec, platform: "windows-x64", libc: "msvc", depsSuffix: "-windows-x64" }
+    if (spec === "linux-x64-gnu") return { spec, platform: "linux-x64", libc: "gnu", depsSuffix: "-linux-x64-gnu" }
+    if (spec === "linux-x64-musl") return { spec, platform: "linux-x64", libc: "musl", depsSuffix: "-linux-x64-musl" }
+    if (spec === "linux-arm64-musl") return { spec, platform: "linux-arm64", libc: "musl", depsSuffix: "-linux-arm64-musl" }
+    if (spec === "linux-arm64-gnu") return { spec, platform: "linux-arm64", libc: "gnu", depsSuffix: "-linux-arm64-gnu" }
+    if (spec === "darwin-arm64") return { spec, platform: "darwin-arm64", libc: "none", depsSuffix: "-darwin-arm64" }
+    if (spec === "darwin-x64") return { spec, platform: "darwin-x64", libc: "none", depsSuffix: "-darwin-x64" }
+    
+    console.log(`Unknown platform spec: ${spec}`)
+    console.log("Valid platforms: windows-x64, linux-x64-gnu, linux-x64-musl, darwin-x64, darwin-arm64, linux-arm64-musl, linux-arm64-gnu")
+    process.exit(1)
+  })
+
+  console.log(`Target specs: ${platformSpecs.join(", ")}`)
   console.log(`Include baseline: ${includeBaseline}`)
 
   // Verify all deps exist first
-  for (const p of platforms) {
-    const platform = p
-    const depsDir = `dist/onprem-deps-${platform}`
+  for (const t of targets) {
+    const depsDir = `dist/onprem-deps${t.depsSuffix}`
     const depsExist = await fs.stat(depsDir).catch(() => null)
     if (!depsExist) {
       console.error(`Error: Dependencies not found at ${depsDir}`)
-      console.error(`Please run 'bun run script/download-onprem-deps.ts --platforms=${p}' first`)
+      console.error(`Please run 'bun run script/download-onprem-deps.ts' with appropriate flags first`)
       process.exit(1)
     }
   }
@@ -446,28 +493,28 @@ async function main() {
 
   const variants: BuildVariant[] = includeBaseline ? ["normal", "baseline"] : ["normal"]
 
-  for (const p of platforms) {
-    const platform = p
-    BUNDLE_BASE_NAME = `opencode-onprem-${platform}`
-    DEPS_DIR = `dist/onprem-deps-${platform}`
+  for (const t of targets) {
+    DEPS_DIR = `dist/onprem-deps${t.depsSuffix}`
+    BUNDLE_BASE_NAME = `opencode-onprem-${t.spec}`
 
     for (const variant of variants) {
-      const buildDir = await findBuildDir(platform, variant)
-      console.log(`\nFound ${variant} build for ${platform}: ${buildDir}`)
-      await createBundle(buildDir, platform, variant)
-      await createWrapperScript(platform, variant)
-      await createEnvFile(platform, variant)
-      await createReadme(platform, variant)
-      await createTarball(platform, variant)
+      const buildDir = await findBuildDir(t.platform, variant, t.libc)
+      console.log(`\nFound ${variant} ${t.libc} build for ${t.platform}: ${buildDir}`)
+      await createBundle(buildDir, t.platform, variant)
+      await createWrapperScript(t.platform, variant)
+      await createEnvFile(t.platform, variant)
+      await createReadme(t.platform, variant, t.libc)
+      await createTarball(t.platform, variant)
     }
   }
 
   console.log("\n=== Packaging complete ===")
   console.log("\nBundles created:")
-  for (const p of platforms) {
-    const platform = p
-    const baseName = `opencode-onprem-${platform}`
-    const ext = platform === "windows-x64" ? ".7z" : ".tar.zst"
+  
+  for (const t of targets) {
+    const baseName = `opencode-onprem-${t.spec}`
+    const ext = t.platform.includes("windows") ? ".7z" : ".tar.zst"
+    
     for (const variant of variants) {
       const suffix = variant === "baseline" ? "-baseline" : ""
       const stats = await fs.stat(`dist/${baseName}${suffix}${ext}`).catch(() => null)

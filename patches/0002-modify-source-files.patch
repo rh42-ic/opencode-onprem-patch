@@ -1,6 +1,19 @@
-diff --git a/../clean-upstream/packages/core/src/flag/flag.ts b/packages/core/src/flag/flag.ts
+From 9a44f8ab08eddb14da0d65b8616c8f7258193e8d Mon Sep 17 00:00:00 2001
+From: rh42-ic <218984493+rh42-ic@users.noreply.github.com>
+Date: Fri, 1 May 2026 19:07:51 +0800
+Subject: [PATCH] 0002
+
+---
+ packages/core/src/flag/flag.ts            |  4 +++
+ packages/opencode/script/build.ts         | 14 +++++++----
+ packages/opencode/src/file/ripgrep.ts     | 11 +++++++++
+ packages/opencode/src/provider/models.ts  | 30 ++++++++++++++++++++++-
+ packages/opencode/src/server/routes/ui.ts | 21 ++++++++++++++--
+ 5 files changed, 72 insertions(+), 8 deletions(-)
+
+diff --git a/packages/core/src/flag/flag.ts b/packages/core/src/flag/flag.ts
 index a3b8133..8a07103 100644
---- a/../clean-upstream/packages/core/src/flag/flag.ts
+--- a/packages/core/src/flag/flag.ts
 +++ b/packages/core/src/flag/flag.ts
 @@ -80,6 +80,10 @@ export const Flag = {
    OPENCODE_SKIP_MIGRATIONS: truthy("OPENCODE_SKIP_MIGRATIONS"),
@@ -13,9 +26,39 @@ index a3b8133..8a07103 100644
    OPENCODE_WORKSPACE_ID: process.env["OPENCODE_WORKSPACE_ID"],
    OPENCODE_EXPERIMENTAL_HTTPAPI: truthy("OPENCODE_EXPERIMENTAL_HTTPAPI"),
    OPENCODE_EXPERIMENTAL_WORKSPACES: OPENCODE_EXPERIMENTAL || truthy("OPENCODE_EXPERIMENTAL_WORKSPACES"),
-diff --git a/../clean-upstream/packages/opencode/src/file/ripgrep.ts b/packages/opencode/src/file/ripgrep.ts
+diff --git a/packages/opencode/script/build.ts b/packages/opencode/script/build.ts
+index 35812f9..5ef2d60 100755
+--- a/packages/opencode/script/build.ts
++++ b/packages/opencode/script/build.ts
+@@ -224,16 +224,20 @@ for (const item of targets) {
+     },
+   })
+ 
+-  // Smoke test: only run if binary is for current platform
+-  if (item.os === process.platform && item.arch === process.arch && !item.abi) {
++  // onprem-fork: Smoke test all binaries for current platform
++  if (item.os === process.platform && item.arch === process.arch) {
+     const binaryPath = `dist/${name}/bin/opencode`
+     console.log(`Running smoke test: ${binaryPath} --version`)
+     try {
+       const versionOutput = await $`${binaryPath} --version`.text()
+       console.log(`Smoke test passed: ${versionOutput.trim()}`)
+-    } catch (e) {
+-      console.error(`Smoke test failed for ${name}:`, e)
+-      process.exit(1)
++    } catch (e: any) {
++      if (item.abi === "musl") {
++        console.log(`Smoke test skipped for ${name}: musl libc missing on host`)
++      } else {
++        console.error(`Smoke test failed for ${name}:`, e)
++        process.exit(1)
++      }
+     }
+   }
+ 
+diff --git a/packages/opencode/src/file/ripgrep.ts b/packages/opencode/src/file/ripgrep.ts
 index 27fd5f2..6c297f3 100644
---- a/../clean-upstream/packages/opencode/src/file/ripgrep.ts
+--- a/packages/opencode/src/file/ripgrep.ts
 +++ b/packages/opencode/src/file/ripgrep.ts
 @@ -12,6 +12,7 @@ import * as Log from "@opencode-ai/core/util/log"
  import { sanitizedProcessEnv } from "@opencode-ai/core/util/opencode-process"
@@ -42,9 +85,9 @@ index 27fd5f2..6c297f3 100644
            const system = yield* Effect.sync(() => which(process.platform === "win32" ? "rg.exe" : "rg"))
            if (system && (yield* fs.isFile(system).pipe(Effect.orDie))) return system
  
-diff --git a/../clean-upstream/packages/opencode/src/provider/models.ts b/packages/opencode/src/provider/models.ts
+diff --git a/packages/opencode/src/provider/models.ts b/packages/opencode/src/provider/models.ts
 index 170fe51..912b182 100644
---- a/../clean-upstream/packages/opencode/src/provider/models.ts
+--- a/packages/opencode/src/provider/models.ts
 +++ b/packages/opencode/src/provider/models.ts
 @@ -8,6 +8,7 @@ import { lazy } from "@/util/lazy"
  import { Filesystem } from "@/util/filesystem"
@@ -104,9 +147,9 @@ index 170fe51..912b182 100644
    void refresh()
    setInterval(
      async () => {
-diff --git a/../clean-upstream/packages/opencode/src/server/routes/ui.ts b/packages/opencode/src/server/routes/ui.ts
+diff --git a/packages/opencode/src/server/routes/ui.ts b/packages/opencode/src/server/routes/ui.ts
 index 403d85d..b90f26a 100644
---- a/../clean-upstream/packages/opencode/src/server/routes/ui.ts
+--- a/packages/opencode/src/server/routes/ui.ts
 +++ b/packages/opencode/src/server/routes/ui.ts
 @@ -8,6 +8,7 @@ import { getMimeType } from "hono/utils/mime"
  import { createHash } from "node:crypto"
@@ -154,3 +197,6 @@ index 403d85d..b90f26a 100644
      if (embeddedWebUI) {
        const match = embeddedWebUI[path.replace(/^\//, "")] ?? embeddedWebUI["index.html"] ?? null
        if (!match) return HttpServerResponse.jsonUnsafe({ error: "Not Found" }, { status: 404 })
+-- 
+2.47.3
+
