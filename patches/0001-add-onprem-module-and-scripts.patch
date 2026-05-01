@@ -961,7 +961,7 @@ index 0000000..49762f1
 \ No newline at end of file
 diff --git a/script/package-onprem-bundle.ts b/script/package-onprem-bundle.ts
 new file mode 100644
-index 0000000..658ee7f
+index 0000000..82edb2f
 --- /dev/null
 +++ b/script/package-onprem-bundle.ts
 @@ -0,0 +1,532 @@
@@ -1395,7 +1395,7 @@ index 0000000..658ee7f
 +    const listFile = `${BUNDLE_DIR}.list`
 +    await Bun.write(path.join("dist", listFile), listContent)
 +
-+    args = ["tar", "--no-recursion", "-I", "zstd -19 -T0 --long", "-cf", TARBALL_NAME, "-T", listFile]
++    args = ["tar", "--no-recursion", "--checkpoint=200", "--checkpoint-action=dot", "-I", "zstd -19 -T0 --long", "-cf", TARBALL_NAME, "-T", listFile]
 +  }
 +
 +  const proc = Bun.spawn(args, {

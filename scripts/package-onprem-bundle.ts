@@ -428,7 +428,7 @@ async function createTarball(platform: string, variant: BuildVariant): Promise<v
     const listFile = `${BUNDLE_DIR}.list`
     await Bun.write(path.join("dist", listFile), listContent)
 
-    args = ["tar", "--no-recursion", "-I", "zstd -19 -T0 --long", "-cf", TARBALL_NAME, "-T", listFile]
+    args = ["tar", "--no-recursion", "--checkpoint=200", "--checkpoint-action=dot", "-I", "zstd -19 -T0 --long", "-cf", TARBALL_NAME, "-T", listFile]
   }
 
   const proc = Bun.spawn(args, {
