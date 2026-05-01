@@ -1,6 +1,6 @@
-diff --git a/packages/opencode/parsers-config.ts b/packages/opencode/parsers-config.ts
-index b4951af..a009c2b 100644
---- a/packages/opencode/parsers-config.ts
+diff --git a/../clean-upstream/packages/opencode/parsers-config.ts b/packages/opencode/parsers-config.ts
+index b4951af..9314e44 100644
+--- a/../clean-upstream/packages/opencode/parsers-config.ts
 +++ b/packages/opencode/parsers-config.ts
 @@ -1,290 +1,343 @@
 -export default {
@@ -24,7 +24,7 @@ index b4951af..a009c2b 100644
 -          "https://raw.githubusercontent.com/nvim-treesitter/nvim-treesitter/refs/heads/master/queries/python/locals.scm",
 -        ],
 -      },
-+import { Flag } from "./src/flag/flag"
++import { Flag } from "@opencode-ai/core/flag/flag"
 +import path from "path"
 +import { existsSync } from "fs"
 +

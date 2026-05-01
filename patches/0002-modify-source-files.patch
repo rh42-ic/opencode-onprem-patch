@@ -1,16 +1,31 @@
-diff --git a/packages/opencode/src/file/ripgrep.ts b/packages/opencode/src/file/ripgrep.ts
-index d6fd61f..9ede2e1 100644
---- a/packages/opencode/src/file/ripgrep.ts
-+++ b/packages/opencode/src/file/ripgrep.ts
-@@ -10,6 +10,7 @@ import { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner
- import * as CrossSpawnSpawner from "@/effect/cross-spawn-spawner"
- import { Global } from "@/global"
- import { Log } from "@/util"
-+import { Onprem } from "../onprem"
- import { sanitizedProcessEnv } from "@/util/opencode-process"
- import { which } from "@/util/which"
+diff --git a/../clean-upstream/packages/core/src/flag/flag.ts b/packages/core/src/flag/flag.ts
+index a3b8133..8a07103 100644
+--- a/../clean-upstream/packages/core/src/flag/flag.ts
++++ b/packages/core/src/flag/flag.ts
+@@ -80,6 +80,10 @@ export const Flag = {
+   OPENCODE_SKIP_MIGRATIONS: truthy("OPENCODE_SKIP_MIGRATIONS"),
+   OPENCODE_STRICT_CONFIG_DEPS: truthy("OPENCODE_STRICT_CONFIG_DEPS"),
  
-@@ -291,6 +292,16 @@ export const layer: Layer.Layer<Service, never, AppFileSystem.Service | ChildPro
++  // onprem-fork: onprem mode flags
++  OPENCODE_ONPREM_MODE: truthy("OPENCODE_ONPREM_MODE"),
++  OPENCODE_ONPREM_DEPS_PATH: process.env["OPENCODE_ONPREM_DEPS_PATH"],
++
+   OPENCODE_WORKSPACE_ID: process.env["OPENCODE_WORKSPACE_ID"],
+   OPENCODE_EXPERIMENTAL_HTTPAPI: truthy("OPENCODE_EXPERIMENTAL_HTTPAPI"),
+   OPENCODE_EXPERIMENTAL_WORKSPACES: OPENCODE_EXPERIMENTAL || truthy("OPENCODE_EXPERIMENTAL_WORKSPACES"),
+diff --git a/../clean-upstream/packages/opencode/src/file/ripgrep.ts b/packages/opencode/src/file/ripgrep.ts
+index 27fd5f2..6c297f3 100644
+--- a/../clean-upstream/packages/opencode/src/file/ripgrep.ts
++++ b/packages/opencode/src/file/ripgrep.ts
+@@ -12,6 +12,7 @@ import * as Log from "@opencode-ai/core/util/log"
+ import { sanitizedProcessEnv } from "@opencode-ai/core/util/opencode-process"
+ import { which } from "@/util/which"
+ import { zod } from "@/util/effect-zod"
++import { Onprem } from "../onprem"
+ import { NonNegativeInt, withStatics } from "@/util/schema"
+ 
+ const log = Log.create({ service: "ripgrep" })
+@@ -288,6 +289,16 @@ export const layer: Layer.Layer<Service, never, AppFileSystem.Service | ChildPro
  
        const filepath = yield* Effect.cached(
          Effect.gen(function* () {
@@ -27,37 +42,23 @@ index d6fd61f..9ede2e1 100644
            const system = yield* Effect.sync(() => which(process.platform === "win32" ? "rg.exe" : "rg"))
            if (system && (yield* fs.isFile(system).pipe(Effect.orDie))) return system
  
-diff --git a/packages/opencode/src/flag/flag.ts b/packages/opencode/src/flag/flag.ts
-index 72c8931..abcedc6 100644
---- a/packages/opencode/src/flag/flag.ts
-+++ b/packages/opencode/src/flag/flag.ts
-@@ -80,6 +80,10 @@ export const Flag = {
-   OPENCODE_SKIP_MIGRATIONS: truthy("OPENCODE_SKIP_MIGRATIONS"),
-   OPENCODE_STRICT_CONFIG_DEPS: truthy("OPENCODE_STRICT_CONFIG_DEPS"),
- 
-+  // onprem-fork: onprem mode flags
-+  OPENCODE_ONPREM_MODE: truthy("OPENCODE_ONPREM_MODE"),
-+  OPENCODE_ONPREM_DEPS_PATH: process.env["OPENCODE_ONPREM_DEPS_PATH"],
-+
-   OPENCODE_WORKSPACE_ID: process.env["OPENCODE_WORKSPACE_ID"],
-   OPENCODE_EXPERIMENTAL_HTTPAPI: truthy("OPENCODE_EXPERIMENTAL_HTTPAPI"),
-   OPENCODE_EXPERIMENTAL_WORKSPACES: OPENCODE_EXPERIMENTAL || truthy("OPENCODE_EXPERIMENTAL_WORKSPACES"),
-diff --git a/packages/opencode/src/provider/models.ts b/packages/opencode/src/provider/models.ts
-index 2924666..febf5b2 100644
---- a/packages/opencode/src/provider/models.ts
+diff --git a/../clean-upstream/packages/opencode/src/provider/models.ts b/packages/opencode/src/provider/models.ts
+index 170fe51..912b182 100644
+--- a/../clean-upstream/packages/opencode/src/provider/models.ts
 +++ b/packages/opencode/src/provider/models.ts
 @@ -8,6 +8,7 @@ import { lazy } from "@/util/lazy"
- import { Filesystem } from "../util"
- import { Flock } from "@opencode-ai/shared/util/flock"
- import { Hash } from "@opencode-ai/shared/util/hash"
+ import { Filesystem } from "@/util/filesystem"
+ import { Flock } from "@opencode-ai/core/util/flock"
+ import { Hash } from "@opencode-ai/core/util/hash"
 +import { Onprem } from "../onprem"
  
  // Try to import bundled snapshot (generated at build time)
  // Falls back to undefined in dev mode when snapshot doesn't exist
-@@ -130,6 +131,18 @@ const fetchApi = async () => {
+@@ -124,6 +125,19 @@ const fetchApi = async () => {
  export const Data = lazy(async () => {
    const result = await Filesystem.readJson(Flag.OPENCODE_MODELS_PATH ?? filepath).catch(() => {})
    if (result) return result
++
 +  // onprem-fork: try deps models.json from onprem bundle before snapshot
 +  if (Onprem.isEnabled()) {
 +    const depsPath = Onprem.getDepsPath()
@@ -73,7 +74,7 @@ index 2924666..febf5b2 100644
    // @ts-ignore
    const snapshot = await import("./models-snapshot.js")
      .then((m) => m.snapshot as Record<string, unknown>)
-@@ -150,6 +163,19 @@ export const Data = lazy(async () => {
+@@ -144,6 +158,19 @@ export const Data = lazy(async () => {
  })
  
  export async function get() {
@@ -93,7 +94,7 @@ index 2924666..febf5b2 100644
    const result = await Data()
    return result as Record<string, Provider>
  }
-@@ -169,7 +195,8 @@ export async function refresh(force = false) {
+@@ -163,7 +190,8 @@ export async function refresh(force = false) {
    })
  }
  
@@ -103,28 +104,53 @@ index 2924666..febf5b2 100644
    void refresh()
    setInterval(
      async () => {
-diff --git a/packages/opencode/src/server/routes/ui.ts b/packages/opencode/src/server/routes/ui.ts
-index d449cd1..3fb8051 100644
---- a/packages/opencode/src/server/routes/ui.ts
+diff --git a/../clean-upstream/packages/opencode/src/server/routes/ui.ts b/packages/opencode/src/server/routes/ui.ts
+index 403d85d..b90f26a 100644
+--- a/../clean-upstream/packages/opencode/src/server/routes/ui.ts
 +++ b/packages/opencode/src/server/routes/ui.ts
-@@ -4,6 +4,7 @@ import { proxy } from "hono/proxy"
- import { getMimeType } from "hono/utils/mime"
+@@ -8,6 +8,7 @@ import { getMimeType } from "hono/utils/mime"
  import { createHash } from "node:crypto"
  import fs from "node:fs/promises"
+ import { ProxyUtil } from "../proxy-util"
 +import { Onprem } from "../../onprem"
  
  const embeddedUIPromise = Flag.OPENCODE_DISABLE_EMBEDDED_WEB_UI
    ? Promise.resolve(null)
-@@ -18,6 +19,12 @@ const csp = (hash = "") =>
+@@ -50,9 +51,16 @@ function embeddedUI() {
+ }
  
- export const UIRoutes = (): Hono =>
-   new Hono().all("/*", async (c) => {
+ export async function serveUI(request: Request) {
+-  const embeddedWebUI = await embeddedUI()
+   const path = new URL(request.url).pathname
+ 
++  // onprem-fork: serve bundled web app in onprem mode
++  const onpremStatic = await Onprem.tryServeStaticFile(path)
++  if (onpremStatic) {
++    return new Response(onpremStatic.body, { headers: { "Content-Type": onpremStatic.mime } })
++  }
++
++  const embeddedWebUI = await embeddedUI()
++
+   if (embeddedWebUI) {
+     const match = embeddedWebUI[path.replace(/^\//, "")] ?? embeddedWebUI["index.html"] ?? null
+     if (!match) return Response.json({ error: "Not Found" }, { status: 404 })
+@@ -84,9 +92,18 @@ export function serveUIEffect(
+   services: { fs: AppFileSystem.Interface; client: HttpClient.HttpClient },
+ ) {
+   return Effect.gen(function* () {
+-    const embeddedWebUI = yield* Effect.promise(() => embeddedUI())
+     const path = new URL(request.url, "http://localhost").pathname
+ 
 +    // onprem-fork: serve bundled web app in onprem mode
-+    const onpremStatic = await Onprem.tryServeStaticFile(c.req.path)
++    const onpremStatic = yield* Effect.promise(() => Onprem.tryServeStaticFile(path))
 +    if (onpremStatic) {
-+      return new Response(onpremStatic.body, { headers: { "Content-Type": onpremStatic.mime } })
++      return HttpServerResponse.raw(onpremStatic.body, {
++        headers: new Headers({ "Content-Type": onpremStatic.mime }),
++      })
 +    }
 +
-     const embeddedWebUI = await embeddedUIPromise
-     const path = c.req.path
- 
++    const embeddedWebUI = yield* Effect.promise(() => embeddedUI())
++
+     if (embeddedWebUI) {
+       const match = embeddedWebUI[path.replace(/^\//, "")] ?? embeddedWebUI["index.html"] ?? null
+       if (!match) return HttpServerResponse.jsonUnsafe({ error: "Not Found" }, { status: 404 })

@@ -9,7 +9,7 @@ This directory contains **git patch files**, scripts, and documentation required
 If patching fails, the descriptive documentation should be sufficient for an AI Coding Agent to resolve conflicts. You can start by saying:
 
 ```
-Read the instructions in @/path/to/opencode-onprem-patch, apply patches to @/path/to/opencode-1.14.22, and resolve any conflicts that occur.
+Read the instructions in @/path/to/opencode-onprem-patch, apply patches to @/path/to/opencode-1.14.31, and resolve any conflicts that occur.
 ```
 
 ## Directory Structure
@@ -20,11 +20,7 @@ opencode-onprem-patch/
 ├── WORKFLOW.md             # Detailed build guide
 ├── README.md               # This file
 ├── patches/
-│   ├── 0001-add-onprem-module-and-scripts.patch  # New files
-│   ├── 0002-modify-source-files.patch            # Source modifications (base)
-│   ├── lsp-server-onprem.patch                   # LSP server offline support
-│   ├── parsers-config-onprem.patch                # Tree-sitter offline support
-│   └── plugins-onprem.patch                      # Plugin offline support
+│   └── onprem-1.14.31.patch                      # 1.14.31 Consolidated patch
 ├── src/
 │   ├── onprem-index.ts         # Onprem module source
 │   ├── onprem-plugins.json      # Plugin config template
@@ -50,11 +46,7 @@ cd opencode-new
 
 # Method 2: Manually apply git patches
 git init && git add -A && git commit -m "init"
-git apply /path/to/opencode-onprem-patch/patches/0001-add-onprem-module-and-scripts.patch
-git apply /path/to/opencode-onprem-patch/patches/0002-modify-source-files.patch
-git apply /path/to/opencode-onprem-patch/patches/lsp-server-onprem.patch
-git apply /path/to/opencode-onprem-patch/patches/parsers-config-onprem.patch
-git apply /path/to/opencode-onprem-patch/patches/plugins-onprem.patch
+git apply /path/to/opencode-onprem-patch/patches/onprem-1.14.31.patch
 ```
 
 ### 2. Pre-download Dependencies
@@ -80,7 +72,7 @@ bun run script/download-onprem-deps.ts --plugins-only
 ### 3. Package Bundle
 
 ```bash
-OPENCODE_VERSION=1.14.22 bun run script/package-onprem-bundle.ts
+OPENCODE_VERSION=1.14.31 bun run script/package-onprem-bundle.ts
 ```
 
 > **Note:** By default, dependencies for all platforms are bundled together. You can use the `--platforms=windows-x64` parameter to restrict the target platform for packaging.
@@ -114,47 +106,19 @@ opencode-onprem.bat
 
 ## Patch File Descriptions
 
-### 0001-add-onprem-module-and-scripts.patch
+### onprem-1.14.31.patch
 
-New files:
+Consolidated patch for version 1.14.31, including:
 - `packages/opencode/src/onprem/index.ts` - Core onprem module
 - `script/download-onprem-deps.ts` - Pre-download script
-- `script/package-onprem-bundle.ts` - Packaging script (includes extension extraction optimization and MIME sniffing for extension-less files to maximize compression)
-- `script/onprem-plugins.json` - Plugin configuration file
-- `script/onprem-plugins.schema.json` - JSON Schema
-
-### 0002-modify-source-files.patch
-
-Modified files:
-- `packages/opencode/src/flag/flag.ts` - Add environment variables
+- `script/package-onprem-bundle.ts` - Packaging script
+- `packages/opencode/src/flag/flag.ts` - Environment variable support
 - `packages/opencode/src/file/ripgrep.ts` - Offline ripgrep
 - `packages/opencode/src/provider/models.ts` - Offline models.json
-- `packages/opencode/src/server/instance.ts` - Web UI static serving
-
-### lsp-server-onprem.patch
-
-Adds offline support for the following LSPs:
-
-**Binary LSPs (11):**
-- clangd, rust-analyzer, zls, lua-language-server
-- terraform-ls, texlab, tinymist, kotlin-ls
-- jdtls, vscode-eslint, elixir-ls
-
-**NPM-based LSPs (12):**
-- typescript-language-server, pyright
-- svelte-language-server, @astrojs/language-server
-- yaml-language-server, dockerfile-language-server-nodejs
-- @vue/language-server, intelephense, bash-language-server
-- oxlint, biome, prisma
-
-### parsers-config-onprem.patch
-
-Supports offline loading of tree-sitter parsers for 25 languages.
-
-### plugins-onprem.patch
-
-Modified files:
-- `packages/opencode/src/plugin/shared.ts` - Add offline plugin detection at start of `resolvePluginTarget()`
+- `packages/opencode/src/server/routes/ui.ts` - Web UI static serving
+- `packages/opencode/src/lsp/server.ts` - 20+ LSP offline support
+- `packages/opencode/parsers-config.ts` - Tree-sitter offline loading
+- `packages/opencode/src/plugin/shared.ts` - Plugin offline loading
 
 ## Supported Offline Components
 

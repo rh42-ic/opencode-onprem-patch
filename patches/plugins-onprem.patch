@@ -1,28 +1,29 @@
-diff --git a/packages/opencode/src/plugin/shared.ts b/packages/opencode/src/plugin/shared.ts
-index ca82121..414f661 100644
---- a/packages/opencode/src/plugin/shared.ts
+diff --git a/../clean-upstream/packages/opencode/src/plugin/shared.ts b/packages/opencode/src/plugin/shared.ts
+index 1a51935..2214f9e 100644
+--- a/../clean-upstream/packages/opencode/src/plugin/shared.ts
 +++ b/packages/opencode/src/plugin/shared.ts
 @@ -5,6 +5,7 @@ import semver from "semver"
- import { Filesystem } from "@/util"
+ import { Filesystem } from "@/util/filesystem"
  import { isRecord } from "@/util/record"
- import { Npm } from "@/npm"
+ import { Npm } from "@opencode-ai/core/npm"
 +import { Onprem } from "../onprem"
  
  // Old npm package names for plugins that are now built-in
  export const DEPRECATED_PLUGIN_PACKAGES = ["opencode-openai-codex-auth", "opencode-copilot-auth"]
-@@ -207,6 +208,15 @@ export async function checkPluginCompatibility(target: string, opencodeVersion:
+@@ -206,6 +207,16 @@ export async function checkPluginCompatibility(target: string, opencodeVersion:
+ 
  export async function resolvePluginTarget(spec: string) {
    if (isPathPluginSpec(spec)) return resolvePathPluginTarget(spec)
-   const hit = parse(spec)
 +
 +  // onprem-fork: check offline plugins directory first
-+  if (Onprem.isEnabled() && hit?.name) {
-+    const pluginPath = Onprem.resolvePlugin(hit.name)
-+    if (pluginPath && (await Onprem.pluginExists(hit.name))) {
++  if (Onprem.isEnabled()) {
++    const parsed = parsePluginSpecifier(spec)
++    const pluginPath = Onprem.resolvePlugin(parsed.pkg)
++    if (pluginPath && (await Onprem.pluginExists(parsed.pkg))) {
 +      return pluginPath
 +    }
 +  }
 +
+   const hit = parse(spec)
    const pkg = hit?.name && hit.raw === hit.name ? `${hit.name}@latest` : spec
    const result = await Npm.add(pkg)
-   return result.directory

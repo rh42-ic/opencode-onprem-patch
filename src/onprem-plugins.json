@@ -1,7 +1,7 @@
 {
   "$schema": "./onprem-plugins.schema.json",
   "plugins": [
-    "opencode-anthropic-auth@latest",
+    "opencode-anthropic-auth@0.0.13",
     "oh-my-opencode-slim@latest",
     "superpowers@git+https://github.com/obra/superpowers.git",
     "@tarquinen/opencode-dcp@latest",
