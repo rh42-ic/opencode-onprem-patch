@@ -2,167 +2,41 @@
 
 ---
 
-# OpenCode Onprem Version Build Guide
+# OpenCode Onprem Build Guide
 
-This document describes how to apply modifications to a new opencode version and generate the corresponding onprem version.
+This document describes how to apply modifications to new OpenCode versions.
 
-## Applying Modifications with Git Patch (Recommended)
+## Core Principles (Minimizing Upstream Touchpoints)
 
-### Quick Apply
+1. **Centralized Logic**: All core Onprem logic is located in `packages/opencode/src/onprem/`.
+2. **Minimal Intrusion**: Add only a small amount of Guard code to the original source, marked with `// onprem-fork:`.
+3. **Additive First**: Prefer implementing features via new files to minimize direct modifications to original files and reduce merge conflicts.
 
+## Patch Application Workflow
+
+### 1. Prepare Source
+Ensure the `opencode` source is in a clean Git state.
+
+### 2. Run Application Script
 ```bash
-# 1. Download new version source
-git clone https://github.com/anomalyco/opencode.git opencode-new
-cd opencode-new
-
-# 2. Initialize git (if not already a git repo)
-git init && git add -A && git commit -m "init"
-
-# 3. Apply patches
-git apply /path/to/opencode-onprem-patch/patches/0001-add-onprem-module-and-scripts.patch
-git apply /path/to/opencode-onprem-patch/patches/0002-modify-source-files.patch
-git apply /path/to/opencode-onprem-patch/patches/lsp-server-onprem.patch
-git apply /path/to/opencode-onprem-patch/patches/parsers-config-onprem.patch
-git apply /path/to/opencode-onprem-patch/patches/plugins-onprem.patch
-
-# 4. If conflicts occur
-# Check .rej files and merge manually
-# Search for "// onprem-fork:" markers to confirm modification locations
+/path/to/opencode-onprem-patch/scripts/apply-patches.sh .
 ```
+This script will:
+- Copy new modules from `src/` to `packages/opencode/src/onprem/`.
+- Copy build scripts to `script/`.
+- Apply the Git patch from `patches/`.
 
-### Or use the script
+## Development and Maintenance
 
+### Updating Patches (When Upstream Changes)
+1. Complete and verify modifications in the upstream directory.
+2. Ensure all modifications are marked with the `// onprem-fork:` prefix.
+3. Regenerate the patch: `git format-patch main --stdout > 0001-onprem-combined.patch`.
+4. Sync `onprem/index.ts` to the `src/` directory.
+5. Sync `download-onprem-deps.ts` and other scripts to the `scripts/` directory.
+
+## Build Verification
 ```bash
-/path/to/opencode-onprem-patch/scripts/apply-patches.sh /path/to/opencode-new
+# linux-x64-musl is recommended for best offline compatibility
+bun run script/build.ts --platform=linux-x64-musl
 ```
-
-## Patch File Descriptions
-
-### 0001-add-onprem-module-and-scripts.patch
-
-New files, including core onprem module, pre-download and packaging scripts.
-
-### 0002-modify-source-files.patch
-
-Core source modifications, including environment variables, ripgrep, model loading, and Web UI serving.
-
-### lsp-server-onprem.patch
-
-Offline support for LSP servers.
-
-### parsers-config-onprem.patch
-
-Offline loading for Tree-sitter WASM and query files.
-
-### plugins-onprem.patch
-
-Offline plugin detection.
-
-## Search Markers
-
-All modifications use the `// onprem-fork:` comment prefix for easy discovery during future synchronizations:
-
-```bash
-grep -rn "onprem-fork" packages/opencode/src/
-```
-
-## Detailed Modification Descriptions (Reference for Manual Application)
-
-### flag.ts
-
-```typescript
-// onprem-fork: onprem mode flags
-export const OPENCODE_ONPREM_MODE = truthy("OPENCODE_ONPREM_MODE")
-export const OPENCODE_ONPREM_DEPS_PATH = process.env["OPENCODE_ONPREM_DEPS_PATH"]
-```
-
-### onprem/index.ts
-
-Core module providing:
-- `isEnabled()` - Check if onprem mode is enabled
-- `getDepsPath()` - Get dependency directory path
-- `resolveBinary()` - Resolve binary file path
-- `getOnpremBin()` - Map LSP/Binary names to their offline paths
-- `tryServeStaticFile()` - Attempt to serve a static file
-
-### ripgrep.ts
-
-```typescript
-// onprem-fork: check offline deps for bundled ripgrep binary
-const onpremBin = Onprem.resolveBinary("rg" + (process.platform === "win32" ? ".exe" : ""), "ripgrep")
-if (onpremBin) return { filepath: onpremBin }
-```
-
-### models.ts
-
-Insert onprem check in `Data()` loading logic:
-```typescript
-// onprem-fork: try deps models.json from onprem bundle
-if (Onprem.isOnpremMode()) {
-  const depsPath = Onprem.getOnpremDepsPath()
-  if (depsPath) {
-    const offlineResult = await Filesystem.readJson(path.join(depsPath, "models.json")).catch(() => {})
-    if (offlineResult) return offlineResult as Record<string, Provider>
-  }
-}
-```
-
-### server/routes/ui.ts
-
-```typescript
-// onprem-fork: serve bundled web app in onprem mode
-const onpremStatic = await Onprem.tryServeStaticFile(c.req.path)
-if (onpremStatic) {
-  return new Response(onpremStatic.body, { headers: { "Content-Type": onpremStatic.mime } })
-}
-```
-
-### lsp/server.ts
-
-Add offline path checks for all supported LSPs:
-```typescript
-// onprem-fork: use offline binary if in onprem mode
-if (isOnpremMode()) {
-  const onpremBin = getOnpremBin("clangd")
-  if (onpremBin) return spawn(onpremBin, args)
-}
-```
-
-## Build Process
-
-### 1. Configure Offline Plugins (Optional)
-
-Edit `script/onprem-plugins.json`.
-
-### 2. Pre-download Dependencies on a Networked Machine
-
-```bash
-cd opencode
-bun install
-bun run script/download-onprem-deps.ts
-# To download dependencies for other target OSs/architectures (e.g. gnu, windows, macOS, arm64), use:
-# bun run script/download-onprem-deps.ts --platforms=linux-x64-musl,linux-x64-gnu,windows-x64,darwin-x64,darwin-arm64,linux-arm64-musl,linux-arm64-gnu
-```
-
-### 3. Package Offline Bundle
-
-```bash
-OPENCODE_VERSION=1.14.31 bun run script/package-onprem-bundle.ts
-# To package multiple architecture combinations at once, supply them via comma-separated list:
-# OPENCODE_VERSION=1.14.31 bun run script/package-onprem-bundle.ts --platforms=linux-x64-musl,linux-x64-gnu,windows-x64,darwin-x64,darwin-arm64,linux-arm64-musl,linux-arm64-gnu
-```
-
-It is highly recommended to output a statically compiled Linux offline package via `musl` (`--platforms=linux-x64-musl`).
-
-### 4. Deploy on an Offline Machine
-
-```bash
-tar --zstd -xf opencode-onprem-linux-x64.tar.zst
-cd opencode-onprem-linux-x64
-./opencode-onprem
-```
-
-## Regenerating Patches after Version Upgrade
-
-It is recommended to use `git format-patch` to regenerate the individual patches after verifying modifications on a new version.
-

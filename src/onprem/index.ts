@@ -134,6 +134,8 @@ export function getOnpremBin(name: string): string | null {
     case "svelte-language-server":
     case "astro-ls":
     case "yaml-language-server":
+    case "docker-langserver":
+    case "pyright-langserver":
     case "intelephense":
     case "bash-language-server":
     case "oxlint":
@@ -144,11 +146,15 @@ export function getOnpremBin(name: string): string | null {
       const binName =
         name === "astro-ls"
           ? "@astrojs/language-server"
-          : name === "prisma-language-server"
-            ? "prisma"
-            : name === "oxc_language_server"
-              ? "oxc_language_server"
-              : name
+          : name === "docker-langserver"
+            ? "docker-langserver"
+            : name === "pyright-langserver"
+              ? "pyright-langserver"
+              : name === "prisma-language-server"
+                ? "prisma"
+                : name === "oxc_language_server"
+                  ? "oxc_language_server"
+                  : name
       return path.join(depsPath, "node_modules", ".bin", binName + cmd)
     }
     default:

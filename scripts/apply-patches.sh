@@ -1,79 +1,42 @@
 #!/bin/bash
-# apply-patches.sh - Apply onprem modifications to opencode source
-# Usage: ./apply-patches.sh <opencode_source_dir>
 
-set -e
+# apply-patches.sh: Apply onprem patches to OpenCode source.
+# Usage: ./apply-patches.sh <opencode-source-dir>
 
-SOURCE_DIR="${1:-.}"
+SOURCE_DIR=$1
+PATCH_DIR=$(cd "$(dirname "$0")/../patches" && pwd)
+SRC_TEMPLATE_DIR=$(cd "$(dirname "$0")/../src" && pwd)
+SCRIPTS_TEMPLATE_DIR=$(cd "$(dirname "$0")" && pwd)
 
-if [ ! -d "$SOURCE_DIR/packages/opencode/src" ]; then
-    echo "Error: Invalid opencode source directory: $SOURCE_DIR"
-    echo "Usage: $0 <opencode_source_dir>"
+if [ -z "$SOURCE_DIR" ]; then
+    echo "Usage: $0 <opencode-source-dir>"
     exit 1
 fi
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PATCHES_DIR="$(cd "$SCRIPT_DIR/../patches" && pwd)"
-
-echo "Applying onprem patches to $SOURCE_DIR..."
-
-# Check if source is a git repo
-if [ ! -d "$SOURCE_DIR/.git" ]; then
-    echo "Initializing git repository..."
-    (cd "$SOURCE_DIR" && git init && git add -A && git commit -m "Initial commit")
+if [ ! -d "$SOURCE_DIR" ]; then
+    echo "Error: Directory $SOURCE_DIR does not exist."
+    exit 1
 fi
 
-# Apply patches using git apply
-echo "Applying patch: 0001-add-onprem-module-and-scripts.patch"
-git -C "$SOURCE_DIR" apply "$PATCHES_DIR/0001-add-onprem-module-and-scripts.patch" || {
-    echo "Error: Failed to apply 0001 patch"
-    echo "This may happen if the source version differs from the expected version."
-    echo "Try applying patches manually or check WORKFLOW.md for instructions."
-    exit 1
-}
+cd "$SOURCE_DIR" || exit 1
 
-echo "Applying patch: 0002-modify-source-files.patch"
-git -C "$SOURCE_DIR" apply "$PATCHES_DIR/0002-modify-source-files.patch" || {
-    echo "Error: Failed to apply 0002 patch"
-    echo "Try applying patches manually or check WORKFLOW.md for instructions."
-    exit 1
-}
+# 1. Copy new files (additive changes)
+echo "Copying onprem modules and scripts..."
+mkdir -p packages/opencode/src/onprem
+cp "$SRC_TEMPLATE_DIR/onprem/index.ts" packages/opencode/src/onprem/
+cp "$SRC_TEMPLATE_DIR/onprem-plugins.json" script/
+cp "$SRC_TEMPLATE_DIR/onprem-plugins.schema.json" script/
+cp "$SCRIPTS_TEMPLATE_DIR/download-onprem-deps.ts" script/
+cp "$SCRIPTS_TEMPLATE_DIR/package-onprem-bundle.ts" script/
 
-echo "Applying patch: lsp-server-onprem.patch"
-git -C "$SOURCE_DIR" apply "$PATCHES_DIR/lsp-server-onprem.patch" || {
-    echo "Error: Failed to apply lsp-server-onprem.patch"
-    exit 1
-}
+# 2. Apply patches (modifications)
+echo "Applying patches..."
+for patch in "$PATCH_DIR"/*.patch; do
+    echo "Applying $(basename "$patch")..."
+    git apply "$patch"
+    if [ $? -ne 0 ]; then
+        echo "Warning: Failed to apply $(basename "$patch"). Attempting manual resolution may be required."
+    fi
+done
 
-echo "Applying patch: parsers-config-onprem.patch"
-git -C "$SOURCE_DIR" apply "$PATCHES_DIR/parsers-config-onprem.patch" || {
-    echo "Error: Failed to apply parsers-config-onprem.patch"
-    exit 1
-}
-
-echo "Applying patch: plugins-onprem.patch"
-git -C "$SOURCE_DIR" apply "$PATCHES_DIR/plugins-onprem.patch" || {
-    echo "Error: Failed to apply plugins-onprem.patch"
-    exit 1
-}
-
-echo ""
-echo "=== Patches applied successfully ==="
-echo ""
-echo "Modified files:"
-echo "  - packages/opencode/src/onprem/index.ts (new)"
-echo "  - packages/opencode/src/flag/flag.ts"
-echo "  - packages/opencode/src/file/ripgrep.ts"
-echo "  - packages/opencode/src/provider/models.ts"
-echo "  - packages/opencode/src/server/instance.ts"
-echo "  - packages/opencode/src/lsp/server.ts"
-echo "  - packages/opencode/src/bun/index.ts"
-echo "  - packages/opencode/parsers-config.ts"
-echo "  - script/download-onprem-deps.ts (new)"
-echo "  - script/package-onprem-bundle.ts (new)"
-echo ""
-echo "Next steps:"
-echo "  cd $SOURCE_DIR"
-echo "  bun install"
-echo "  bun run script/download-onprem-deps.ts"
-echo "  OPENCODE_VERSION=x.x.x bun run script/package-onprem-bundle.ts"
+echo "Done."
