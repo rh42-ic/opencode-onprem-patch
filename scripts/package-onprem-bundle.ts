@@ -86,6 +86,13 @@ async function createBundle(buildDir: string, platform: string, variant: BuildVa
   console.log("Copying dependencies...")
   await $`cp -rL ${DEPS_DIR}/* ${path.join(bundlePath, "deps")}/`
 
+  console.log("Moving schema to bundle root...")
+  const schemaInDeps = path.join(bundlePath, "deps", "schema")
+  const schemaInRoot = path.join(bundlePath, "schema")
+  if (await fs.stat(schemaInDeps).catch(() => null)) {
+    await fs.rename(schemaInDeps, schemaInRoot)
+  }
+
   console.log("Copying OpenTUI native library...")
   let globPattern: string
   if (isWindows) {
@@ -143,9 +150,6 @@ set SCRIPT_DIR=%SCRIPT_DIR:~0,-1%
 
 set OPENCODE_ONPREM_MODE=true
 set OPENCODE_ONPREM_DEPS_PATH=%SCRIPT_DIR%\\deps
-set OPENCODE_DISABLE_AUTOUPDATE=true
-set OPENCODE_DISABLE_LSP_DOWNLOAD=true
-set OPENCODE_DISABLE_MODELS_FETCH=true
 
 "%SCRIPT_DIR%\\bin\\opencode.exe" %*
 `
@@ -159,9 +163,6 @@ SCRIPT_DIR="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
 
 export OPENCODE_ONPREM_MODE=true
 export OPENCODE_ONPREM_DEPS_PATH="\$SCRIPT_DIR/deps"
-export OPENCODE_DISABLE_AUTOUPDATE=true
-export OPENCODE_DISABLE_LSP_DOWNLOAD=true
-export OPENCODE_DISABLE_MODELS_FETCH=true
 
 exec "\$SCRIPT_DIR/bin/opencode" "\$@"
 `
@@ -188,9 +189,6 @@ SCRIPT_DIR="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
 
 export OPENCODE_ONPREM_MODE=true
 export OPENCODE_ONPREM_DEPS_PATH="\$SCRIPT_DIR/deps"
-export OPENCODE_DISABLE_AUTOUPDATE=true
-export OPENCODE_DISABLE_LSP_DOWNLOAD=true
-export OPENCODE_DISABLE_MODELS_FETCH=true
 `
 
   await Bun.write(path.join(BUNDLE_DIR, "opencode-onprem.env"), envContent)
@@ -227,7 +225,6 @@ ${variantNote}${libcNote}
     - \`terraform-ls/\` - Terraform language server
     - \`texlab/\` - LaTeX language server
     - \`tinymist/\` - Typst language server
-    - \`kotlin-ls/\` - Kotlin language server
     - \`jdtls/\` - Java language server
     - \`vscode-eslint/\` - ESLint server
     - \`elixir-ls-master/\` - Elixir language server
@@ -235,6 +232,8 @@ ${variantNote}${libcNote}
   - \`tree-sitter/\` - Tree-sitter parsers for syntax highlighting
     - \`wasm/\` - WASM parser files
     - \`queries/\` - Query files for highlights/locals
+  - \`schema/\` - Configuration schema files
+    - \`config.json\` - Example configuration schema
   - \`plugins/\` - Pre-installed plugins (optional)
     - \`package.json\`
     - \`node_modules/\`
@@ -307,7 +306,6 @@ These language servers are included and work without network access:
 | Terraform/HCL | terraform-ls |
 | LaTeX | texlab |
 | Typst | tinymist |
-| Kotlin | kotlin-ls |
 | Java | jdtls |
 | ESLint | vscode-eslint |
 | Elixir | elixir-ls |
@@ -327,7 +325,6 @@ These LSPs require their respective language runtimes to be installed on the sys
 | Elixir | elixir-ls | Elixir + mix |
 | C# | csharp-ls | .NET SDK |
 | F# | fsautocomplete | .NET SDK |
-| Kotlin | kotlin-lsp | Kotlin |
 | Dart | dart | Dart SDK |
 | OCaml | ocamllsp | opam |
 | Haskell | haskell-language-server | GHCup |
@@ -347,11 +344,8 @@ python, rust, go, cpp, csharp, bash, c, java, kotlin, ruby,php, scala, html, hcl
 
 | Variable | Description |
 |----------|-------------|
-| \`OPENCODE_ONPREM_MODE\` | Set to \`true\` to enable onprem mode |
+| \`OPENCODE_ONPREM_MODE\` | Set to \`true\` to enable onprem mode (disables network) |
 | \`OPENCODE_ONPREM_DEPS_PATH\` | Path to the deps directory |
-| \`OPENCODE_DISABLE_AUTOUPDATE\` | Set to \`true\` to disable auto-updates |
-| \`OPENCODE_DISABLE_LSP_DOWNLOAD\` | Set to \`true\` to prevent LSP downloads |
-| \`OPENCODE_DISABLE_MODELS_FETCH\` | Set to \`true\` to prevent fetching models from models.dev |
 
 ## Troubleshooting
 

@@ -53,8 +53,9 @@ OPENCODE_VERSION=1.14.40 bun run script/package-onprem-bundle.ts --platforms=lin
 
 ## Patch 核心改动
 
-- **Flag 系统**: 引入 `OPENCODE_ONPREM_MODE` 等环境变量控制。
+- **Flag 系统**: 引入 `OPENCODE_ONPREM_MODE` 控制，开启后自动禁用更新、下载和模型抓取。
 - **模型加载**: 优先从离线 `models.json` 加载，兼容 Effect 框架。
 - **UI 拦截**: 自动服务前端静态资源，无需外部 Proxy。
 - **LSP & Parsers**: 针对 Pyright, Docker 等 20+ LSP 的离线二进制路径映射。
+- **Schema 参考**: 自动下载 `config.json` 到 bundle 根目录作为配置参考。
 - **插件系统**: 离线模式下的插件合法性检测绕过。

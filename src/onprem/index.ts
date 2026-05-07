@@ -7,7 +7,7 @@ export function isEnabled(): boolean {
 }
 
 export function isOnpremMode(): boolean {
-  return isEnabled()
+  return isEnabled() || process.env["OPENCODE_ONPREM_MODE"] === "true" || process.env["OPENCODE_ONPREM_MODE"] === "1"
 }
 
 export function getDepsPath(): string | undefined {

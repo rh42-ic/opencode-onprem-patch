@@ -55,8 +55,9 @@ OPENCODE_VERSION=1.14.40 bun run script/package-onprem-bundle.ts --platforms=lin
 
 ## Core Patch Changes
 
-- **Flag System**: Introduces `OPENCODE_ONPREM_MODE` and other environment variables.
+- **Flag System**: Introduces `OPENCODE_ONPREM_MODE` control; enabling it automatically disables updates, downloads, and model fetching.
 - **Model Loading**: Prioritizes loading from offline `models.json`, compatible with the Effect framework.
 - **UI Interception**: Automatically serves frontend static assets without an external Proxy.
-- **LSP & Parsers**: Offline binary path mappings for 20+ LSPs including Pyright, Docker, etc.
+- **LSP & Parsers**: Offline binary path mapping for 20+ LSPs including Pyright and Docker.
+- **Schema Reference**: Automatically downloads `config.json` to the bundle root for configuration reference.
 - **Plugin System**: Bypasses plugin validity checks in offline mode.
